@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "test:digital-twin": "playwright test tests/digital-twin.spec.js --reporter=line"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0"
+  }
+}

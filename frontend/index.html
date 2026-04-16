@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SMAN ABB GoFa Dashboard</title>
+    <link rel="stylesheet" href="/assets/styles.css?v=master-insights-1" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>ABB GoFa Live Showcase</h1>
+          <p class="subtitle">Digital Twin und ROS2-Telemetrie live vom Roboter</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="view-switcher" role="tablist" aria-label="Dashboard Ansicht">
+            <button class="view-tab active" id="userViewTab" type="button" role="tab" aria-selected="true" data-view="user">
+              User
+            </button>
+            <button class="view-tab" id="developerViewTab" type="button" role="tab" aria-selected="false" data-view="developer">
+              Developer
+            </button>
+          </div>
+          <div class="status" id="connectionStatus">
+            <span class="dot"></span>
+            <span>Verbinde...</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="metrics showcase-metrics" id="metricStrip">
+        <article class="metric status-card" id="readyCard">
+          <span>Robot Ready</span>
+          <strong id="readyState">wartet</strong>
+        </article>
+        <article class="metric status-card" id="motionCard">
+          <span>Motion</span>
+          <strong id="motionState">Idle</strong>
+        </article>
+        <article class="metric telemetry-card">
+          <span>Live ROS2</span>
+          <strong id="liveRate">0.0 Hz</strong>
+        </article>
+        <article class="metric telemetry-card">
+          <span>ROS2</span>
+          <strong id="rosState">unbekannt</strong>
+        </article>
+        <article class="metric telemetry-card">
+          <span>Aktive Topics</span>
+          <strong id="topicCount">0</strong>
+        </article>
+        <article class="metric telemetry-card">
+          <span>Letztes Paket</span>
+          <strong id="lastPacket">-</strong>
+        </article>
+      </section>
+
+      <section class="dashboard-view active" id="userDashboard" data-dashboard-view="user" aria-labelledby="userViewTab">
+        <section class="widget-grid user-widget-grid">
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Live Daten</p>
+                <h2>Joint Aktivität</h2>
+              </div>
+              <span id="jointActivityValue">0.0 rad/s</span>
+            </div>
+            <canvas class="sparkline" id="jointActivityChart" aria-label="Live Graph Joint Aktivität"></canvas>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Stream</p>
+                <h2>Update Rate</h2>
+              </div>
+              <span id="rateValue">0.0 Hz</span>
+            </div>
+            <canvas class="sparkline" id="rateChart" aria-label="Live Graph Update Rate"></canvas>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Achsen</p>
+                <h2>Positionen</h2>
+              </div>
+              <span id="jointRangeValue">0.00 rad</span>
+            </div>
+            <canvas class="bar-chart" id="jointPositionChart" aria-label="Live Balkendiagramm Joint Positionen"></canvas>
+          </article>
+        </section>
+
+        <section class="widget-grid user-insight-grid">
+          <article class="panel pose-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">TCP Pose</p>
+                <h2>Endeffektor</h2>
+              </div>
+              <span id="tcpSpeedValue">0.00 m/s</span>
+            </div>
+            <div class="pose-grid">
+              <div><span>X</span><strong id="tcpX">0.000 m</strong></div>
+              <div><span>Y</span><strong id="tcpY">0.000 m</strong></div>
+              <div><span>Z</span><strong id="tcpZ">0.000 m</strong></div>
+              <div><span>Roll</span><strong id="tcpRoll">0.0 deg</strong></div>
+              <div><span>Pitch</span><strong id="tcpPitch">0.0 deg</strong></div>
+              <div><span>Yaw</span><strong id="tcpYaw">0.0 deg</strong></div>
+            </div>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Trajectory</p>
+                <h2>TCP Verlauf</h2>
+              </div>
+              <span id="trajectoryValue">0 Samples</span>
+            </div>
+            <canvas class="trajectory-chart" id="trajectoryChart" aria-label="Live Trajectory TCP Verlauf"></canvas>
+          </article>
+        </section>
+
+        <section class="grid">
+          <article class="panel twin-panel wide">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Digital Twin</p>
+                <h2>GoFa 3D</h2>
+              </div>
+              <span id="twinStatus">wartet</span>
+            </div>
+            <div class="twin-stage" id="twinStage">
+              <canvas id="twinCanvas" aria-label="ABB GoFa 3D Digital Twin"></canvas>
+              <div class="twin-readout">
+                <span id="twinModelLabel">CRB 15000-5/0.95</span>
+                <span id="twinJointCount">0 Achsen</span>
+                <span id="twinPoseLabel">Live</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel joint-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">/joint_states</p>
+                <h2>Achsen</h2>
+              </div>
+              <span id="jointTimestamp">-</span>
+            </div>
+            <div class="joint-list" id="jointList"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Status</p>
+                <h2>Topics</h2>
+              </div>
+            </div>
+            <div class="topic-list" id="topicList"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="dashboard-view" id="developerDashboard" data-dashboard-view="developer" aria-labelledby="developerViewTab" hidden>
+        <section class="widget-grid developer-widget-grid">
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">WebSocket</p>
+                <h2>Paketfluss</h2>
+              </div>
+              <span id="packetFlowValue">0 msg</span>
+            </div>
+            <canvas class="sparkline" id="packetFlowChart" aria-label="Live Graph Paketfluss"></canvas>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Topics</p>
+                <h2>Freshness</h2>
+              </div>
+              <span id="topicFreshnessValue">-</span>
+            </div>
+            <canvas class="bar-chart" id="topicFreshnessChart" aria-label="Live Balkendiagramm Topic Freshness"></canvas>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Data Quality</p>
+                <h2>Latenz & Jitter</h2>
+              </div>
+              <span id="qualityValue">-</span>
+            </div>
+            <div class="quality-grid">
+              <div><span>Latenz</span><strong id="latencyValue">-</strong></div>
+              <div><span>Jitter</span><strong id="jitterValue">-</strong></div>
+              <div><span>Datenalter</span><strong id="dataAgeValue">-</strong></div>
+              <div><span>Samples</span><strong id="sampleCountValue">0</strong></div>
+            </div>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Health</p>
+                <h2>System Checks</h2>
+              </div>
+              <span id="healthStateValue">OK</span>
+            </div>
+            <div class="health-list" id="healthList"></div>
+          </article>
+        </section>
+
+        <section class="grid developer-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Status</p>
+                <h2>Topics</h2>
+              </div>
+            </div>
+            <div class="topic-list" id="developerTopicList"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">/joint_states</p>
+                <h2>Achsen Debug</h2>
+              </div>
+              <span id="developerJointTimestamp">-</span>
+            </div>
+            <div class="joint-list compact-list" id="developerJointList"></div>
+          </article>
+        </section>
+
+        <article class="panel twin-panel wide">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Developer View</p>
+              <h2>Letzte ROS2-Nachricht</h2>
+            </div>
+            <span>Raw JSON</span>
+          </div>
+          <pre id="messagePreview">{}</pre>
+        </article>
+      </section>
+    </main>
+    <div class="joint-popover" id="jointPopover" role="dialog" aria-live="polite" hidden></div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/assets/vendor/three.module.min.js"
+        }
+      }
+    </script>
+    <script type="module" src="/assets/app.js?v=master-insights-1"></script>
+  </body>
+</html>

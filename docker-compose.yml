@@ -1,0 +1,19 @@
+services:
+  sman-gofa-dashboard:
+    build: .
+    container_name: sman-gofa-dashboard
+    network_mode: host
+    ipc: host
+    environment:
+      ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-0}"
+      RMW_IMPLEMENTATION: "${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+      ROS_TOPICS: >
+        [
+          {"name": "/joint_states", "type": "sensor_msgs/msg/JointState", "label": "Joint States"},
+          {"name": "/tf", "type": "tf2_msgs/msg/TFMessage", "label": "TF"},
+          {"name": "/diagnostics", "type": "diagnostic_msgs/msg/DiagnosticArray", "label": "Diagnostics"}
+        ]
+    volumes:
+      - ./frontend:/app/frontend:ro
+      - ./backend:/app/backend:ro
+    restart: unless-stopped
