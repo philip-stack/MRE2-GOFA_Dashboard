@@ -1,10 +1,15 @@
 from launch_ros.substitutions import FindPackageShare
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, LogInfo
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import PathJoinSubstitution, TextSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
 def generate_launch_description():
+    use_fake_hardware = LaunchConfiguration('use_fake_hardware')
+    launch_rviz = LaunchConfiguration('launch_rviz')
+    rws_ip = LaunchConfiguration('rws_ip')
+    rws_port = LaunchConfiguration('rws_port')
+
     ###Move Group MoveIt###
     move_group = IncludeLaunchDescription(PythonLaunchDescriptionSource([PathJoinSubstitution([FindPackageShare('abb_crb15000_moveit'), 'launch','move_group.launch.py'])])) 
     
@@ -15,11 +20,18 @@ def generate_launch_description():
         'description_package': 'abb_crb15000_support',
         'description_file': 'crb15000_5_95.xacro',
         'moveit_config_package': 'abb_crb15000_moveit',
-        'launch_rviz': 'true',
-        'use_fake_hardware': 'false',
-        'rws_ip': '192.168.125.1',
-        'rws_port': '443'    
+        'launch_rviz': launch_rviz,
+        'use_fake_hardware': use_fake_hardware,
+        'rws_ip': rws_ip,
+        'rws_port': rws_port
     }.items()
 )
     
-    return LaunchDescription([driver,move_group])
+    return LaunchDescription([
+        DeclareLaunchArgument('use_fake_hardware', default_value='false'),
+        DeclareLaunchArgument('launch_rviz', default_value='true'),
+        DeclareLaunchArgument('rws_ip', default_value='192.168.125.1'),
+        DeclareLaunchArgument('rws_port', default_value='443'),
+        driver,
+        move_group,
+    ])

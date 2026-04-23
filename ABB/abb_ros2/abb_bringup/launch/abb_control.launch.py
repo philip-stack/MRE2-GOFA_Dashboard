@@ -165,7 +165,7 @@ def generate_launch_description():
     )
 
     rviz_config_file = PathJoinSubstitution(
-        [FindPackageShare("abb_crb15000_support"), "config", "crb15000.rviz"]
+        [FindPackageShare("abb_crb15000_moveit"), "config", "moveit.rviz"]
     )
 
     control_node = Node(

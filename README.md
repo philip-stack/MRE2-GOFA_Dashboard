@@ -57,6 +57,113 @@ ros2 topic pub /joint_states sensor_msgs/msg/JointState "{name: ['joint_1','join
 
 Wenn echte ABB-GoFa-Topics andere Namen oder Typen verwenden, die Eintraege in `ROS_TOPICS` entsprechend anpassen.
 
+## ROS2-Overlay vorbereiten
+
+Vor jedem ROS2-Launch muss das ROS2-Jazzy-Setup und danach das lokale Workspace-Overlay geladen werden:
+
+```bash
+cd ~/SMAN
+source /opt/ros/jazzy/setup.bash
+source ~/SMAN/ros2_ws/install/setup.bash
+```
+
+Schneller Check, ob die ABB-Pakete gefunden werden:
+
+```bash
+ros2 pkg prefix abb_bringup
+ros2 pkg prefix abb_crb15000_moveit
+```
+
+Falls RViz/MoveIt-Visualisierungstools fehlen, installieren:
+
+```bash
+sudo apt-get install -y ros-jazzy-rviz-visual-tools
+```
+
+## Dashboard-Bridge fuer Joint States
+
+Wenn das Dashboard unter `http://localhost:8080` laeuft, kann ein lokales ROS2-Terminal `/joint_states` an die Web-App weiterleiten:
+
+```bash
+cd ~/SMAN
+source /opt/ros/jazzy/setup.bash
+source ~/SMAN/ros2_ws/install/setup.bash
+./tools/ros_joint_state_dashboard_bridge.py
+```
+
+Die Bridge sendet standardmaessig an:
+
+```text
+http://127.0.0.1:8080/api/ingest
+```
+
+## MoveIt und RViz
+
+### Demo ohne Roboter
+
+Der Demo-Launch startet eine vollstaendige MoveIt/RViz-Umgebung mit Fake-Hardware. Hier sollte der 6D-Gizmo am Endeffektor sichtbar sein:
+
+```bash
+cd ~/SMAN
+source /opt/ros/jazzy/setup.bash
+source ~/SMAN/ros2_ws/install/setup.bash
+ros2 launch abb_crb15000_moveit demo.launch.py
+```
+
+In RViz oben das Tool `Interact` auswaehlen. Im MotionPlanning-Panel die Planning Group `manipulator` verwenden, dann den Gizmo am `tool0`/Endeffektor verschieben und `Plan` oder `Plan & Execute` nutzen.
+
+### Complete-Launch ohne Roboter
+
+Wenn der echte ABB-GoFa gerade nicht verbunden ist, den Complete-Launch mit Fake-Hardware starten:
+
+```bash
+cd ~/SMAN
+source /opt/ros/jazzy/setup.bash
+source ~/SMAN/ros2_ws/install/setup.bash
+ros2 launch abb_bringup crb15000_complete.launch.py use_fake_hardware:=true
+```
+
+Das ist der richtige Modus fuer Offline-Tests mit MoveIt-Gizmo, RViz und Dashboard.
+
+### Complete-Launch mit echtem Roboter
+
+Mit Roboter/RWS-Verbindung laeuft der Complete-Launch standardmaessig gegen die echte Hardware:
+
+```bash
+cd ~/SMAN
+source /opt/ros/jazzy/setup.bash
+source ~/SMAN/ros2_ws/install/setup.bash
+ros2 launch abb_bringup crb15000_complete.launch.py
+```
+
+Explizit mit IP und Port:
+
+```bash
+ros2 launch abb_bringup crb15000_complete.launch.py use_fake_hardware:=false rws_ip:=192.168.125.1 rws_port:=443
+```
+
+### Wichtige Checks
+
+Launch-Argumente anzeigen:
+
+```bash
+ros2 launch abb_bringup crb15000_complete.launch.py --show-args
+```
+
+Laufende ROS2-Topics pruefen:
+
+```bash
+ros2 topic list --no-daemon
+```
+
+Wichtige Prozesse pruefen:
+
+```bash
+ps -ef | rg 'rviz2|move_group|ros2_control_node|robot_state_publisher'
+```
+
+Wenn der Gizmo im `demo.launch.py` sichtbar ist, aber im `crb15000_complete.launch.py` nicht, dann ist der Complete-Launch wahrscheinlich ohne erreichbaren Roboter in Real-Hardware-Modus gestartet. In diesem Fall `use_fake_hardware:=true` verwenden.
+
 ## Digital Twin
 
 Der Digital Twin laedt lokal die Visual-Meshes des ROS-Industrial Pakets `abb_crb15000_support` fuer den ABB GoFa CRB 15000-5/0.95:
