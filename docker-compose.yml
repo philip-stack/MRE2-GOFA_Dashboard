@@ -7,6 +7,9 @@ services:
     environment:
       ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-0}"
       RMW_IMPLEMENTATION: "${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+      EGM_ENABLE: "${EGM_ENABLE:-1}"
+      EGM_HOST: "${EGM_HOST:-0.0.0.0}"
+      EGM_PORT: "${EGM_PORT:-6511}"
       ROS_TOPICS: >
         [
           {"name": "/joint_states", "type": "sensor_msgs/msg/JointState", "label": "Joint States"},

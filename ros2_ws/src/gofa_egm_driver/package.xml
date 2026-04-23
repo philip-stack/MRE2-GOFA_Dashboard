@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>gofa_egm_driver</name>
+  <version>0.1.0</version>
+  <description>Minimal ABB EGM FollowJointTrajectory bridge for the GoFa MoveIt demo.</description>
+  <maintainer email="philip@example.com">Philip</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

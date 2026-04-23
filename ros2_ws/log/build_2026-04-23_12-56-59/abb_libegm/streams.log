@@ -1,0 +1,78 @@
+[0.009s] Invoking command in '/home/philip/SMAN/ros2_ws/build/abb_libegm': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/philip/SMAN/ABB/abb_libegm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/home/philip/SMAN/ros2_ws/install/abb_libegm
+[0.053s] -- The CXX compiler identification is GNU 13.3.0
+[0.064s] -- Detecting CXX compiler ABI info
+[0.130s] -- Detecting CXX compiler ABI info - done
+[0.137s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.137s] -- Detecting CXX compile features
+[0.138s] -- Detecting CXX compile features - done
+[0.221s] -- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.83.0/BoostConfig.cmake (found version "1.83.0") found components: regex system thread 
+[0.237s] -- Found Protobuf: /usr/lib/x86_64-linux-gnu/libprotobuf.so (found version "3.21.12") 
+[0.237s] -- Generating protobuf C++ for: proto/egm.proto;proto/egm_wrapper.proto;proto/egm_wrapper_trajectory.proto
+[0.239s] -- Found Threads: TRUE  
+[0.241s] -- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+[0.302s] -- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+[0.304s] -- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+[0.366s] -- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+[0.366s] -- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+[0.430s] -- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+[0.431s] -- Configuring done (0.4s)
+[0.434s] -- Generating done (0.0s)
+[0.434s] [33mCMake Warning:
+[0.434s]   Manually-specified variables were not used by the project:
+[0.434s] 
+[0.434s]     BUILD_TESTING
+[0.434s] 
+[0.434s] [0m
+[0.435s] -- Build files have been written to: /home/philip/SMAN/ros2_ws/build/abb_libegm
+[0.438s] Invoked command in '/home/philip/SMAN/ros2_ws/build/abb_libegm' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/philip/SMAN/ABB/abb_libegm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/home/philip/SMAN/ros2_ws/install/abb_libegm
+[0.439s] Invoking command in '/home/philip/SMAN/ros2_ws/build/abb_libegm': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/philip/SMAN/ros2_ws/build/abb_libegm -- -j8 -l8
+[0.465s] [  6%] [34m[1mRunning cpp protocol buffer compiler on proto/egm_wrapper_trajectory.proto[0m
+[0.465s] [ 13%] [34m[1mRunning cpp protocol buffer compiler on proto/egm_wrapper.proto[0m
+[0.466s] [ 20%] [34m[1mRunning cpp protocol buffer compiler on proto/egm.proto[0m
+[0.506s] [ 33%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/src/egm_controller_interface.cpp.o[0m
+[0.506s] [ 33%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/src/egm_base_interface.cpp.o[0m
+[0.506s] [ 40%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/src/egm_common_auxiliary.cpp.o[0m
+[0.506s] [ 46%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/src/egm_logger.cpp.o[0m
+[0.507s] [ 53%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/src/egm_common.cpp.o[0m
+[0.509s] [ 60%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/src/egm_interpolator.cpp.o[0m
+[0.511s] [ 66%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/src/egm_trajectory_interface.cpp.o[0m
+[0.514s] [ 73%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/src/egm_udp_server.cpp.o[0m
+[3.044s] In file included from [01m[K/usr/include/boost/bind/detail/requires_cxx11.hpp:9[m[K,
+[3.044s]                  from [01m[K/usr/include/boost/bind/bind.hpp:24[m[K,
+[3.044s]                  from [01m[K/usr/include/boost/bind.hpp:29[m[K,
+[3.044s]                  from [01m[K/home/philip/SMAN/ABB/abb_libegm/src/egm_udp_server.cpp:37[m[K:
+[3.044s] [01m[K/usr/include/boost/bind.hpp:36:1:[m[K [01;36m[Knote: [m[K‘[01m[K#pragma message: The practice of declaring the Bind placeholders (_1, _2, ...) in the global namespace is deprecated. Please use <boost/bind/bind.hpp> + using namespace boost::placeholders, or define BOOST_BIND_GLOBAL_PLACEHOLDERS to retain the current behavior.[m[K’
+[3.044s]    36 | [01;36m[KBOOST_PRAGMA_MESSAGE[m[K(
+[3.044s]       | [01;36m[K^~~~~~~~~~~~~~~~~~~~[m[K
+[3.921s] [ 80%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/egm.pb.cc.o[0m
+[4.995s] [ 86%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/egm_wrapper.pb.cc.o[0m
+[5.175s] [ 93%] [32mBuilding CXX object CMakeFiles/abb_libegm.dir/egm_wrapper_trajectory.pb.cc.o[0m
+[14.005s] [100%] [32m[1mLinking CXX shared library libabb_libegm.so[0m
+[14.075s] [100%] Built target abb_libegm
+[14.082s] Invoked command in '/home/philip/SMAN/ros2_ws/build/abb_libegm' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/philip/SMAN/ros2_ws/build/abb_libegm -- -j8 -l8
+[14.083s] Invoking command in '/home/philip/SMAN/ros2_ws/build/abb_libegm': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/philip/SMAN/ros2_ws/build/abb_libegm
+[14.088s] -- Install configuration: "Release"
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_logger.h
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_controller_interface.h
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_interpolator.h
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_udp_server.h
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_common_auxiliary.h
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_common.h
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_base_interface.h
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_trajectory_interface.h
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm.proto
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_wrapper.proto
+[14.088s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_wrapper_trajectory.proto
+[14.089s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm.pb.h
+[14.089s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_wrapper.pb.h
+[14.089s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/egm_wrapper_trajectory.pb.h
+[14.089s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/include/abb_libegm/abb_libegm_export.h
+[14.089s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/lib/libabb_libegm.so
+[14.090s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/share/abb_libegm/abb_libegmConfig.cmake
+[14.090s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/share/abb_libegm/abb_libegmConfigVersion.cmake
+[14.090s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/share/abb_libegm/package.xml
+[14.090s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/share/abb_libegm/abb_libegmTargets.cmake
+[14.090s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_libegm/share/abb_libegm/abb_libegmTargets-release.cmake
+[14.091s] Invoked command in '/home/philip/SMAN/ros2_ws/build/abb_libegm' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/philip/SMAN/ros2_ws/build/abb_libegm

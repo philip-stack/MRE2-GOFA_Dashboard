@@ -1,0 +1,5 @@
+if(EXISTS "/home/philip/SMAN/ros2_ws/build/abb_librws/abb_librws-test[1]_tests.cmake")
+  include("/home/philip/SMAN/ros2_ws/build/abb_librws/abb_librws-test[1]_tests.cmake")
+else()
+  add_test(abb_librws-test_NOT_BUILT abb_librws-test_NOT_BUILT)
+endif()

@@ -1,0 +1,25 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: abb_crb15000_support
+    relative_path: urdf/crb15000_5_95.xacro
+  srdf:
+    relative_path: config/abb_crb15000_5_95.srdf
+  package_settings:
+    author_name: Michael Schebek
+    author_email: michael.schebek@technikum-wien.at
+    generated_timestamp: 1776263750
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity

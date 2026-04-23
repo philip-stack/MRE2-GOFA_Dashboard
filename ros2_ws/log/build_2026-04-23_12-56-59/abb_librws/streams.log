@@ -1,0 +1,111 @@
+[0.010s] Invoking command in '/home/philip/SMAN/ros2_ws/build/abb_librws': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/philip/SMAN/ABB/abb_librws -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/home/philip/SMAN/ros2_ws/install/abb_librws
+[0.056s] -- The CXX compiler identification is GNU 13.3.0
+[0.067s] -- Detecting CXX compiler ABI info
+[0.134s] -- Detecting CXX compiler ABI info - done
+[0.146s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.146s] -- Detecting CXX compile features
+[0.146s] -- Detecting CXX compile features - done
+[0.149s] -- Searching for Poco library...
+[0.167s] --   Found Poco!
+[0.167s] -- components found: Foundation, Net, Util, XML, NetSSL.
+[0.177s] -- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.83.0/BoostConfig.cmake (found version "1.83.0") found components: exception 
+[0.181s] -- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+[0.246s] -- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+[0.247s] -- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+[0.310s] -- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+[0.310s] -- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+[0.378s] -- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+[0.458s] -- Found GTest: /usr/lib/x86_64-linux-gnu/cmake/GTest/GTestConfig.cmake (found version "1.14.0")  
+[0.458s] -- Configuring done (0.4s)
+[0.467s] -- Generating done (0.0s)
+[0.468s] [33mCMake Warning:
+[0.468s]   Manually-specified variables were not used by the project:
+[0.468s] 
+[0.468s]     BUILD_TESTING
+[0.468s] 
+[0.468s] [0m
+[0.470s] -- Build files have been written to: /home/philip/SMAN/ros2_ws/build/abb_librws
+[0.474s] Invoked command in '/home/philip/SMAN/ros2_ws/build/abb_librws' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/philip/SMAN/ABB/abb_librws -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/home/philip/SMAN/ros2_ws/install/abb_librws
+[0.475s] Invoking command in '/home/philip/SMAN/ros2_ws/build/abb_librws': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/philip/SMAN/ros2_ws/build/abb_librws -- -j8 -l8
+[0.525s] [  3%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/system_constants.cpp.o[0m
+[0.532s] [  7%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/rws_poco_result.cpp.o[0m
+[0.533s] [ 11%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/rws_poco_client.cpp.o[0m
+[0.539s] [ 14%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/rws_subscription.cpp.o[0m
+[0.556s] [ 18%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/rws_websocket.cpp.o[0m
+[0.556s] [ 22%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/parsing.cpp.o[0m
+[0.557s] [ 25%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/rws.cpp.o[0m
+[0.569s] [ 29%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/rws_rapid.cpp.o[0m
+[1.173s] [ 33%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/connection_options.cpp.o[0m
+[1.666s] [ 37%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/common/rw/rapid.cpp.o[0m
+[1.733s] [ 40%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/common/rw/panel.cpp.o[0m
+[2.052s] [ 44%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v1_0/rws.cpp.o[0m
+[2.429s] [ 48%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v1_0/rws_client.cpp.o[0m
+[2.463s] [ 51%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v1_0/rws_interface.cpp.o[0m
+[2.637s] [ 55%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v1_0/rw/rapid.cpp.o[0m
+[2.680s] [ 59%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v1_0/rw/panel.cpp.o[0m
+[3.392s] [ 62%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v1_0/rw/io.cpp.o[0m
+[3.872s] [ 66%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v1_0/rws_state_machine_interface.cpp.o[0m
+[5.681s] [ 70%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v2_0/rws.cpp.o[0m
+[7.519s] [ 74%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v2_0/rws_client.cpp.o[0m
+[7.596s] [ 77%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v2_0/rws_interface.cpp.o[0m
+[8.419s] [ 81%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v2_0/rw/rapid.cpp.o[0m
+[8.557s] [ 85%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v2_0/rw/panel.cpp.o[0m
+[9.939s] [ 88%] [32mBuilding CXX object CMakeFiles/abb_librws.dir/src/v2_0/rws_state_machine_interface.cpp.o[0m
+[14.338s] [ 92%] [32m[1mLinking CXX shared library libabb_librws.so[0m
+[14.417s] [ 92%] Built target abb_librws
+[14.429s] [ 96%] [32mBuilding CXX object CMakeFiles/abb_librws-test.dir/test/rws_rapid_test.cpp.o[0m
+[16.204s] [100%] [32m[1mLinking CXX executable abb_librws-test[0m
+[16.317s] [100%] Built target abb_librws-test
+[16.326s] Invoked command in '/home/philip/SMAN/ros2_ws/build/abb_librws' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/philip/SMAN/ros2_ws/build/abb_librws -- -j8 -l8
+[16.327s] Invoking command in '/home/philip/SMAN/ros2_ws/build/abb_librws': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/philip/SMAN/ros2_ws/build/abb_librws
+[16.333s] -- Install configuration: "Release"
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/xml_attribute.h
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_resource.h
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_poco_result.h
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v2_0
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v2_0/rw
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v2_0/rw/panel.h
+[16.333s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v2_0/rw/rapid.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v2_0/rws_interface.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v2_0/rws_state_machine_interface.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v2_0/rws_client.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v2_0/rws.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_info.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_error.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/coordinate.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/connection_options.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0/rw
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0/rw/io.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0/rw/panel.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0/rw/rapid.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0/rws_interface.h
+[16.334s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0/rws_state_machine_interface.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0/rws_client.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/v1_0/rws.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_rapid.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_subscription.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/parsing.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_cfg.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_poco_client.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/system_constants.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws.h
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/common
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/common/rw
+[16.335s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/common/rw/io.h
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/common/rw/panel.h
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/common/rw/rapid.h
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/rws_websocket.h
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/include/abb_librws/abb_librws_export.h
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/share/abb_librws/cmake
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/share/abb_librws/cmake/README.md
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/share/abb_librws/cmake/FindPoco.cmake
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/lib/libabb_librws.so
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/share/abb_librws/abb_librwsConfig.cmake
+[16.336s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/share/abb_librws/abb_librwsConfigVersion.cmake
+[16.337s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/share/abb_librws/package.xml
+[16.337s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/share/abb_librws/abb_librwsTargets.cmake
+[16.337s] -- Installing: /home/philip/SMAN/ros2_ws/install/abb_librws/share/abb_librws/abb_librwsTargets-release.cmake
+[16.338s] Invoked command in '/home/philip/SMAN/ros2_ws/build/abb_librws' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/philip/SMAN/ros2_ws/install/gofa_egm_driver:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/philip/SMAN/ros2_ws/build/abb_librws

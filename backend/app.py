@@ -1,6 +1,9 @@
 import asyncio
 import json
+import math
 import os
+import socket
+import struct
 import threading
 import time
 from dataclasses import dataclass
@@ -12,6 +15,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from rclpy.executors import ExternalShutdownException
 from geometry_msgs.msg import PoseStamped, Twist
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
@@ -50,6 +54,18 @@ def ros_time_to_float(stamp: Any) -> float | None:
     if not hasattr(stamp, "sec") or not hasattr(stamp, "nanosec"):
         return None
     return float(stamp.sec) + float(stamp.nanosec) / 1_000_000_000.0
+
+
+def json_safe(value: Any) -> Any:
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {key: json_safe(item) for key, item in value.items()}
+    return value
 
 
 def read_topics() -> list[TopicConfig]:
@@ -154,13 +170,141 @@ def serialize_message(message: Any, msg_type: str) -> dict[str, Any]:
     return {"repr": repr(message)}
 
 
+def _read_varint(buffer: bytes, index: int) -> tuple[int, int]:
+    value = 0
+    shift = 0
+    while index < len(buffer):
+        byte = buffer[index]
+        index += 1
+        value |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return value, index
+        shift += 7
+    raise ValueError("Incomplete protobuf varint")
+
+
+def _protobuf_fields(buffer: bytes) -> list[tuple[int, int, Any]]:
+    fields: list[tuple[int, int, Any]] = []
+    index = 0
+    while index < len(buffer):
+        key, index = _read_varint(buffer, index)
+        field_number = key >> 3
+        wire_type = key & 0x07
+        if wire_type == 0:
+            value, index = _read_varint(buffer, index)
+        elif wire_type == 1:
+            value = buffer[index : index + 8]
+            index += 8
+        elif wire_type == 2:
+            length, index = _read_varint(buffer, index)
+            value = buffer[index : index + length]
+            index += length
+        elif wire_type == 5:
+            value = buffer[index : index + 4]
+            index += 4
+        else:
+            raise ValueError(f"Unsupported protobuf wire type: {wire_type}")
+        fields.append((field_number, wire_type, value))
+    return fields
+
+
+def _decode_packed_doubles(value: bytes) -> list[float]:
+    if len(value) % 8 != 0:
+        return []
+    return list(struct.unpack(f"<{len(value) // 8}d", value))
+
+
+def parse_egm_joints(packet: bytes) -> list[float] | None:
+    """Extract feedback joint values from an ABB EGMRobot protobuf packet.
+
+    ABB EGM uses protobuf on UDP. The first feedback joint block sits at:
+    EGMRobot.feedBack(2).joints(1).joints(1), packed as float64 degrees.
+    """
+    for field_number, wire_type, value in _protobuf_fields(packet):
+        if field_number != 2 or wire_type != 2:
+            continue
+        for feedback_field, feedback_wire_type, feedback_value in _protobuf_fields(value):
+            if feedback_field != 1 or feedback_wire_type != 2:
+                continue
+            joint_values: list[float] = []
+            for joint_field, joint_wire_type, joint_value in _protobuf_fields(feedback_value):
+                if joint_field != 1:
+                    continue
+                if joint_wire_type == 1:
+                    joint_values.append(struct.unpack("<d", joint_value)[0])
+                elif joint_wire_type == 2:
+                    joint_values.extend(_decode_packed_doubles(joint_value))
+            if len(joint_values) >= 6:
+                return [math.radians(value) for value in joint_values[:6]]
+    return None
+
+
+class PayloadStore:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last_seen: dict[str, float] = {}
+        self._latest_payloads: dict[str, dict[str, Any]] = {}
+
+    def record(self, payload: dict[str, Any]) -> None:
+        topic = payload.get("topic")
+        received_at = payload.get("received_at")
+        if not isinstance(topic, str) or not isinstance(received_at, (int, float)):
+            return
+        with self._lock:
+            self._last_seen[topic] = float(received_at)
+            self._latest_payloads[topic] = payload
+
+    def status_payload(self) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            items = list(self._last_seen.items())
+        return {
+            "kind": "status",
+            "ros_ok": rclpy.ok(),
+            "topics": [
+                {
+                    "name": topic,
+                    "last_seen": last_seen,
+                    "age_sec": round(now - last_seen, 3),
+                }
+                for topic, last_seen in items
+            ],
+            "time": now,
+        }
+
+    def snapshot_payload(self) -> dict[str, Any]:
+        with self._lock:
+            topics = list(self._latest_payloads.values())
+        return {
+            "kind": "snapshot",
+            "topics": topics,
+            "status": self.status_payload(),
+        }
+
+
+def enqueue_payload(queue: asyncio.Queue, payload: dict[str, Any]) -> None:
+    try:
+        queue.put_nowait(payload)
+    except asyncio.QueueFull:
+        try:
+            queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        queue.put_nowait(payload)
+
+
 class RosTopicBridge(Node):
-    def __init__(self, topics: list[TopicConfig], queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
+    def __init__(
+        self,
+        topics: list[TopicConfig],
+        queue: asyncio.Queue,
+        loop: asyncio.AbstractEventLoop,
+        store: PayloadStore,
+    ):
         super().__init__("sman_gofa_web_bridge")
         self._queue = queue
         self._loop = loop
-        self._last_seen: dict[str, float] = {}
-        self._latest_payloads: dict[str, dict[str, Any]] = {}
+        self._store = store
         self._subscriptions = []
 
         for topic in topics:
@@ -178,7 +322,6 @@ class RosTopicBridge(Node):
     def _callback_for(self, topic: TopicConfig):
         def callback(message: Any) -> None:
             now = time.time()
-            self._last_seen[topic.name] = now
             payload = {
                 "kind": "topic",
                 "topic": topic.name,
@@ -187,33 +330,17 @@ class RosTopicBridge(Node):
                 "received_at": now,
                 "data": serialize_message(message, topic.type),
             }
-            self._latest_payloads[topic.name] = payload
-            self._loop.call_soon_threadsafe(self._queue.put_nowait, payload)
+            safe_payload = json_safe(payload)
+            self._store.record(safe_payload)
+            self._loop.call_soon_threadsafe(enqueue_payload, self._queue, safe_payload)
 
         return callback
 
     def status_payload(self) -> dict[str, Any]:
-        now = time.time()
-        return {
-            "kind": "status",
-            "ros_ok": rclpy.ok(),
-            "topics": [
-                {
-                    "name": topic,
-                    "last_seen": last_seen,
-                    "age_sec": round(now - last_seen, 3),
-                }
-                for topic, last_seen in self._last_seen.items()
-            ],
-            "time": now,
-        }
+        return self._store.status_payload()
 
     def snapshot_payload(self) -> dict[str, Any]:
-        return {
-            "kind": "snapshot",
-            "topics": list(self._latest_payloads.values()),
-            "status": self.status_payload(),
-        }
+        return self._store.snapshot_payload()
 
 
 class ConnectionManager:
@@ -236,8 +363,57 @@ class ConnectionManager:
         for client in clients:
             try:
                 await client.send_json(payload)
-            except RuntimeError:
+            except (RuntimeError, WebSocketDisconnect):
                 await self.disconnect(client)
+
+
+def egm_udp_listener(
+    host: str,
+    port: int,
+    queue: asyncio.Queue,
+    loop: asyncio.AbstractEventLoop,
+    store: PayloadStore,
+) -> None:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((host, port))
+    sock.settimeout(1.0)
+    print(f"Listening for ABB EGM UDP on {host}:{port}", flush=True)
+
+    while True:
+        try:
+            packet, address = sock.recvfrom(8192)
+        except socket.timeout:
+            continue
+        except OSError:
+            return
+
+        try:
+            positions = parse_egm_joints(packet)
+        except (ValueError, struct.error):
+            continue
+        if positions is None:
+            continue
+
+        now = time.time()
+        payload = {
+            "kind": "topic",
+            "topic": "/joint_states",
+            "type": "sensor_msgs/msg/JointState",
+            "label": "EGM Joint States",
+            "received_at": now,
+            "source": f"egm:{address[0]}:{address[1]}",
+            "data": {
+                "header_stamp": now,
+                "names": ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"],
+                "positions": positions,
+                "velocities": [],
+                "efforts": [],
+            },
+        }
+        safe_payload = json_safe(payload)
+        store.record(safe_payload)
+        loop.call_soon_threadsafe(enqueue_payload, queue, safe_payload)
 
 
 app = FastAPI(title="SMAN ABB GoFa ROS2 Dashboard")
@@ -250,17 +426,25 @@ app.add_middleware(
 )
 
 TOPICS = read_topics()
+EGM_ENABLE = os.getenv("EGM_ENABLE", "1").lower() not in {"0", "false", "no"}
+EGM_HOST = os.getenv("EGM_HOST", "0.0.0.0")
+EGM_PORT = int(os.getenv("EGM_PORT", "6511"))
 EVENT_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=1000)
 CONNECTIONS = ConnectionManager()
+STORE = PayloadStore()
 ROS_NODE: RosTopicBridge | None = None
 ROS_THREAD: threading.Thread | None = None
+EGM_THREAD: threading.Thread | None = None
 
 
 def spin_ros(loop: asyncio.AbstractEventLoop) -> None:
     global ROS_NODE
     rclpy.init()
-    ROS_NODE = RosTopicBridge(TOPICS, EVENT_QUEUE, loop)
-    rclpy.spin(ROS_NODE)
+    ROS_NODE = RosTopicBridge(TOPICS, EVENT_QUEUE, loop, STORE)
+    try:
+        rclpy.spin(ROS_NODE)
+    except ExternalShutdownException:
+        pass
 
 
 async def broadcaster() -> None:
@@ -271,17 +455,23 @@ async def broadcaster() -> None:
 
 async def status_loop() -> None:
     while True:
-        if ROS_NODE is not None:
-            await CONNECTIONS.broadcast(ROS_NODE.status_payload())
+        await CONNECTIONS.broadcast(STORE.status_payload())
         await asyncio.sleep(1)
 
 
 @app.on_event("startup")
 async def startup() -> None:
-    global ROS_THREAD
+    global ROS_THREAD, EGM_THREAD
     loop = asyncio.get_running_loop()
     ROS_THREAD = threading.Thread(target=spin_ros, args=(loop,), daemon=True)
     ROS_THREAD.start()
+    if EGM_ENABLE:
+        EGM_THREAD = threading.Thread(
+            target=egm_udp_listener,
+            args=(EGM_HOST, EGM_PORT, EVENT_QUEUE, loop, STORE),
+            daemon=True,
+        )
+        EGM_THREAD.start()
     asyncio.create_task(broadcaster())
     asyncio.create_task(status_loop())
 
@@ -289,7 +479,10 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     if ROS_NODE is not None:
-        ROS_NODE.destroy_node()
+        try:
+            ROS_NODE.destroy_node()
+        except ValueError:
+            pass
     if rclpy.ok():
         rclpy.shutdown()
 
@@ -297,6 +490,22 @@ async def shutdown() -> None:
 @app.get("/api/topics")
 async def topics() -> list[dict[str, str]]:
     return [topic.__dict__ for topic in TOPICS]
+
+
+@app.post("/api/ingest")
+async def ingest(payload: dict[str, Any]) -> dict[str, str]:
+    payload.setdefault("kind", "topic")
+    payload.setdefault("received_at", time.time())
+    payload.setdefault("source", "host-bridge")
+    safe_payload = json_safe(payload)
+    STORE.record(safe_payload)
+    enqueue_payload(EVENT_QUEUE, safe_payload)
+    return {"status": "ok"}
+
+
+@app.get("/api/ingest")
+async def ingest_status() -> dict[str, str]:
+    return {"status": "ready", "method": "POST"}
 
 
 @app.websocket("/ws")
@@ -310,8 +519,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 "supported_types": sorted(MESSAGE_TYPES),
             }
         )
-        if ROS_NODE is not None:
-            await websocket.send_json(ROS_NODE.snapshot_payload())
+        await websocket.send_json(STORE.snapshot_payload())
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:

@@ -1,0 +1,124 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 180,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 185,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 193,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 201,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 209,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "include",
+			"paths" : 
+			[
+				{
+					"from" : "include",
+					"to" : "."
+				}
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "include/abb_egm_rws_managers",
+			"paths" : 
+			[
+				"proto/robot_controller_description.proto",
+				"/home/philip/SMAN/ros2_ws/build/abb_egm_rws_managers/robot_controller_description.pb.h",
+				"/home/philip/SMAN/ros2_ws/build/abb_egm_rws_managers/abb_egm_rws_managers_export.h"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "Unspecified",
+			"destination" : "share/abb_egm_rws_managers",
+			"paths" : 
+			[
+				"/home/philip/SMAN/ros2_ws/build/abb_egm_rws_managers//CMakeFiles/abb_egm_rws_managersConfig.cmake",
+				"/home/philip/SMAN/ros2_ws/build/abb_egm_rws_managers//CMakeFiles/abb_egm_rws_managersConfigVersion.cmake",
+				"package.xml"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "Unspecified",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"libabb_egm_rws_managers.so"
+			],
+			"targetId" : "abb_egm_rws_managers::@6890427a1f51a3e7e1df",
+			"targetIndex" : 0,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "Unspecified",
+			"destination" : "share/abb_egm_rws_managers",
+			"exportName" : "EXPORT_abb_egm_rws_managers",
+			"exportTargets" : 
+			[
+				{
+					"id" : "abb_egm_rws_managers::@6890427a1f51a3e7e1df",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"CMakeFiles/Export/3f440e1b14c17a6fcb7a3bdeb2c9e7ce/abb_egm_rws_managersTargets.cmake"
+			],
+			"type" : "export"
+		}
+	],
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	}
+}

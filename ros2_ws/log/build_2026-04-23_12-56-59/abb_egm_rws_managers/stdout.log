@@ -1,0 +1,50 @@
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.83.0/BoostConfig.cmake (found version "1.83.0") found components: regex system thread 
+-- Searching for Poco library...
+--   Found Poco!
+-- components found: Foundation, Net, Util, XML.
+-- Found Protobuf: /usr/lib/x86_64-linux-gnu/libprotobuf.so (found version "3.21.12") 
+-- Generating protobuf C++ for: proto/robot_controller_description.proto
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+-- Configuring done (0.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/philip/SMAN/ros2_ws/build/abb_egm_rws_managers
+[ 14%] [34m[1mRunning cpp protocol buffer compiler on proto/robot_controller_description.proto[0m
+[ 57%] [32mBuilding CXX object CMakeFiles/abb_egm_rws_managers.dir/src/rws_manager.cpp.o[0m
+[ 57%] [32mBuilding CXX object CMakeFiles/abb_egm_rws_managers.dir/src/system_data_parser.cpp.o[0m
+[ 57%] [32mBuilding CXX object CMakeFiles/abb_egm_rws_managers.dir/robot_controller_description.pb.cc.o[0m
+[ 71%] [32mBuilding CXX object CMakeFiles/abb_egm_rws_managers.dir/src/egm_manager.cpp.o[0m
+[ 85%] [32mBuilding CXX object CMakeFiles/abb_egm_rws_managers.dir/src/utilities.cpp.o[0m
+[100%] [32m[1mLinking CXX shared library libabb_egm_rws_managers.so[0m
+[100%] Built target abb_egm_rws_managers
+-- Install configuration: "Release"
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers/egm_manager.h
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers/rws_manager.h
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers/data_containers.h
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers/system_data_parser.h
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers/utilities.h
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers/robot_controller_description.proto
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers/robot_controller_description.pb.h
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/include/abb_egm_rws_managers/abb_egm_rws_managers_export.h
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/share/abb_egm_rws_managers/abb_egm_rws_managersConfig.cmake
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/share/abb_egm_rws_managers/abb_egm_rws_managersConfigVersion.cmake
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/share/abb_egm_rws_managers/package.xml
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/lib/libabb_egm_rws_managers.so
+-- Set non-toolchain portion of runtime path of "/home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/lib/libabb_egm_rws_managers.so" to ""
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/share/abb_egm_rws_managers/abb_egm_rws_managersTargets.cmake
+-- Installing: /home/philip/SMAN/ros2_ws/install/abb_egm_rws_managers/share/abb_egm_rws_managers/abb_egm_rws_managersTargets-release.cmake

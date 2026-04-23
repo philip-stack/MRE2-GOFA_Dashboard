@@ -153,6 +153,13 @@ function stopDemoStream() {
   state.demoTimer = null;
 }
 
+function setLiveMode(label = "ROS live") {
+  state.realDataReceived = true;
+  stopDemoStream();
+  rosStateEl.textContent = "online";
+  setConnection(true, label);
+}
+
 function updateLiveRate(receivedAt) {
   state.jointUpdateTimes.push(receivedAt);
   state.jointUpdateTimes = state.jointUpdateTimes.filter((time) => receivedAt - time <= 5);
@@ -585,8 +592,7 @@ function updateJointStates(data) {
 
 function handleMessage(payload) {
   if (!payload.demo && payload.kind === "topic") {
-    state.realDataReceived = true;
-    stopDemoStream();
+    setLiveMode(payload.source ? `Live ${payload.source}` : "ROS live");
   }
 
   if (payload.kind === "hello") {
@@ -606,6 +612,7 @@ function handleMessage(payload) {
   }
 
   if (payload.kind === "status") {
+    if (payload.demo && state.realDataReceived) return;
     rosStateEl.textContent = payload.demo ? "demo" : payload.ros_ok ? "online" : "offline";
     updateTopics(payload.topics || []);
     return;
