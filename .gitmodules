@@ -1,0 +1,25 @@
+[submodule "ABB/abb_egm_rws_managers"]
+	path = ABB/abb_egm_rws_managers
+	url = https://github.com/herrvonregen/abb_egm_rws_managers.git
+
+[submodule "ABB/abb_gofa_custom"]
+	path = ABB/abb_gofa_custom
+	url = git@github.com:philip-stack/MRE2-GOFA_Dashboard.git
+	branch = abb_gofa_custom-work
+
+[submodule "ABB/abb_libegm"]
+	path = ABB/abb_libegm
+	url = https://github.com/ros-industrial/abb_libegm.git
+
+[submodule "ABB/abb_librws"]
+	path = ABB/abb_librws
+	url = https://github.com/herrvonregen/abb_librws.git
+
+[submodule "ABB/abb_ros2"]
+	path = ABB/abb_ros2
+	url = git@github.com:philip-stack/MRE2-GOFA_Dashboard.git
+	branch = abb_ros2-work
+
+[submodule "ABB/abb_ros2_msgs"]
+	path = ABB/abb_ros2_msgs
+	url = https://github.com/gbartyzel/abb_ros2_msgs.git
