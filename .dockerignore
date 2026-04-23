@@ -6,3 +6,9 @@ __pycache__
 node_modules
 test-results
 playwright-report
+log
+ros2_ws/build
+ros2_ws/install
+ros2_ws/log
+**/__pycache__
+**/*.pyc
