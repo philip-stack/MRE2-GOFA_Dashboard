@@ -54,7 +54,7 @@ body {
 
 .view-switcher {
   display: inline-grid;
-  grid-template-columns: repeat(2, minmax(96px, 1fr));
+  grid-template-columns: repeat(3, minmax(96px, 1fr));
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--line);
@@ -92,6 +92,25 @@ body {
   background: #f7f7f8;
   color: #111318;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.demo-button {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.demo-button.active {
+  border-color: rgba(32, 201, 151, 0.7);
+  background: var(--ok-soft);
+  color: var(--accent);
 }
 
 .eyebrow {
@@ -255,12 +274,36 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
 }
 
 .user-insight-grid {
-  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(320px, 0.8fr) minmax(320px, 1fr);
 }
 
 .developer-widget-grid,
-.developer-grid {
+.developer-grid,
+.maintenance-kpi-grid,
+.maintenance-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.developer-grid {
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.developer-grid .panel {
+  min-height: 0;
+}
+
+.maintenance-grid {
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.maintenance-grid .panel {
+  min-height: 0;
+}
+
+.maintenance-kpi-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .panel {
@@ -277,21 +320,36 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
 }
 
 .sparkline,
-.bar-chart,
-.trajectory-chart {
+.bar-chart {
   display: block;
   width: 100%;
   height: 142px;
 }
 
 .widget-card .sparkline,
-.widget-card .bar-chart,
-.widget-card .trajectory-chart {
+.widget-card .bar-chart {
   padding: 12px 14px 16px;
 }
 
 .pose-card {
   min-height: 220px;
+}
+
+.workspace-card {
+  min-height: 220px;
+}
+
+.workspace-map {
+  display: block;
+  width: 100%;
+  height: 220px;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+
+.workspace-map:active {
+  cursor: grabbing;
 }
 
 .pose-grid,
@@ -333,6 +391,100 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   display: grid;
   gap: 10px;
   padding: 16px;
+}
+
+.score-meter {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+}
+
+.score-ring {
+  --score: 100%;
+  display: grid;
+  place-items: center;
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, var(--panel) 58%, transparent 60%),
+    conic-gradient(var(--accent) var(--score), rgba(82, 94, 112, 0.35) 0);
+}
+
+.score-ring.warn {
+  background:
+    radial-gradient(circle at center, var(--panel) 58%, transparent 60%),
+    conic-gradient(var(--warn) var(--score), rgba(82, 94, 112, 0.35) 0);
+}
+
+.score-ring.danger {
+  background:
+    radial-gradient(circle at center, var(--panel) 58%, transparent 60%),
+    conic-gradient(var(--danger) var(--score), rgba(82, 94, 112, 0.35) 0);
+}
+
+.score-ring strong {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.score-ring span {
+  margin-top: -26px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.reason-list {
+  display: grid;
+  gap: 8px;
+}
+
+.quality-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(104px, 1fr));
+  gap: 10px;
+  padding: 16px;
+}
+
+.quality-summary div {
+  min-height: 74px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(29, 34, 43, 0.72);
+}
+
+.quality-summary span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.quality-summary strong {
+  display: block;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-size: clamp(16px, 1.7vw, 18px);
+  line-height: 1.18;
+  font-variant-numeric: tabular-nums;
+}
+
+.maintenance-kpi-grid .quality-summary {
+  grid-template-columns: repeat(3, minmax(112px, 1fr));
+}
+
+.maintenance-kpi-grid .quality-summary strong {
+  font-size: clamp(17px, 1.8vw, 19px);
 }
 
 .health-item {
@@ -390,6 +542,10 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
 
 #twinCanvas:active {
   cursor: grabbing;
+}
+
+#twinCanvas.stale {
+  filter: grayscale(1) opacity(0.58);
 }
 
 .twin-readout {
@@ -533,6 +689,185 @@ pre {
   white-space: pre-wrap;
 }
 
+.maintenance-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(16, 18, 23, 0.72);
+}
+
+.segmented button,
+.timeline-item button,
+.mail-settings button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.segmented button {
+  min-width: 54px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.segmented button.active {
+  background: #f7f7f8;
+  color: #111318;
+}
+
+.axis-wear-list,
+.timeline,
+.mail-queue,
+.mail-settings {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.axis-wear-item {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(120px, 0.8fr) 44px;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(29, 34, 43, 0.62);
+}
+
+.axis-wear-item strong,
+.timeline-item strong,
+.mail-item strong {
+  display: block;
+  color: var(--text);
+}
+
+.axis-wear-item span,
+.timeline-item span,
+.timeline-item time,
+.mail-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.axis-wear-item b {
+  text-align: right;
+  font-size: 18px;
+}
+
+.wear-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #2b3440;
+}
+
+.wear-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--warn), var(--danger));
+}
+
+.timeline {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.timeline-item,
+.mail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 68px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(29, 34, 43, 0.62);
+}
+
+.timeline-item.warning {
+  border-left-color: var(--warn);
+}
+
+.timeline-item.critical,
+.mail-item.error {
+  border-left-color: var(--danger);
+}
+
+.timeline-item p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.mail-settings label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mail-settings label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mail-settings input[type="text"] {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(16, 18, 23, 0.86);
+  color: var(--text);
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.mail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mail-actions span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mail-settings button {
+  padding: 0 14px;
+}
+
 .empty {
   color: var(--muted);
 }
@@ -633,7 +968,11 @@ pre {
   .grid,
   .widget-grid,
   .user-insight-grid,
-  .developer-grid {
+  .developer-grid,
+  .maintenance-kpi-grid,
+  .maintenance-grid,
+  .score-meter,
+  .quality-summary {
     grid-template-columns: 1fr;
   }
 
@@ -655,7 +994,32 @@ pre {
     width: 100%;
   }
 
+  .maintenance-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .segmented {
+    overflow-x: auto;
+  }
+
+  .axis-wear-item,
+  .timeline-item,
+  .mail-item {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-item,
+  .mail-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .status {
+    width: 100%;
+  }
+
+  .demo-button {
     width: 100%;
   }
 

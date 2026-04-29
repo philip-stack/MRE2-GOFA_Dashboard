@@ -11,6 +11,7 @@ RUN apt-get update \
   build-essential \
   cmake \
   git \
+  iproute2 \
   libboost-all-dev \
   libpoco-dev \
   libprotobuf-dev \

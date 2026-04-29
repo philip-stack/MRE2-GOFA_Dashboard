@@ -11,6 +11,15 @@ test("dashboard tabs switch and demo data fills widgets", async ({ page }) => {
   await expect(page.locator("#tcpX")).toContainText("m");
   await expect(page.locator("#trajectoryValue")).toContainText("Samples");
 
+  await page.locator("#maintenanceViewTab").click();
+  await expect(page.locator("#maintenanceDashboard")).toBeVisible();
+  await expect(page.locator("#maintenanceViewTab")).toHaveClass(/active/);
+  await expect(page.locator("#maintenanceHealthScore")).not.toHaveText("");
+  await expect(page.locator("#axisWearList .axis-wear-item")).toHaveCount(6);
+  await expect(page.locator("#mailSettingsForm")).toBeVisible();
+  await page.locator("#maintenanceWindow button[data-window='7d']").click();
+  await expect(page.locator("#maintenanceWindow button[data-window='7d']")).toHaveClass(/active/);
+
   await page.locator("#developerViewTab").click();
   await expect(page.locator("#developerDashboard")).toBeVisible();
   await expect(page.locator("#developerViewTab")).toHaveClass(/active/);

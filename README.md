@@ -2,10 +2,11 @@
 
 Web-Dashboard fuer ROS2-Daten eines ABB GoFa Roboters. Die App laeuft in Docker, liest ROS2-Topics im Container und streamt die Daten per WebSocket in den Browser.
 
-## Start
+## Start mit Docker
 
 ```bash
-docker compose up --build
+cd ~/SMAN
+docker compose up -d --build --force-recreate
 ```
 
 Dann im Browser oeffnen:
@@ -14,12 +15,43 @@ Dann im Browser oeffnen:
 http://localhost:8080
 ```
 
+Der Container enthaelt Backend, Frontend, ROS2-Workspace und Dashboard-Assets im Image. Nach Codeaenderungen an `backend/`, `frontend/`, `tools/`, `ABB/` oder `ros2_ws/src/` immer neu bauen:
+
+```bash
+docker compose build sman-gofa-dashboard
+docker compose up -d --force-recreate sman-gofa-dashboard
+```
+
+Laufende Logs:
+
+```bash
+docker compose logs -f sman-gofa-dashboard
+```
+
+Persistente Dashboard-Daten liegen auf dem Host unter:
+
+```text
+data/sman_dashboard.sqlite3
+```
+
+Die Datei `.env` wird von Docker Compose fuer lokale Zugangsdaten gelesen, aber nicht ins Image kopiert.
+
+## Demo-Modus ohne Roboter
+
+Wenn der Roboter nicht erreichbar ist, kann das Dashboard mit Demo-Daten getestet werden:
+
+```text
+http://localhost:8080/?demo=1
+```
+
+Alternativ im Dashboard oben rechts den Button `Demo` verwenden.
+
 ## ROS2-Kommunikation
 
 Der Container nutzt `network_mode: host`, damit DDS/ROS2 die Topics vom Host oder Roboter-Netz sehen kann. Wichtig ist, dass `ROS_DOMAIN_ID` zum restlichen ROS2-System passt:
 
 ```bash
-ROS_DOMAIN_ID=0 docker compose up --build
+ROS_DOMAIN_ID=0 docker compose up -d --build --force-recreate
 ```
 
 ## Topics konfigurieren
@@ -96,6 +128,188 @@ Die Bridge sendet standardmaessig an:
 ```text
 http://127.0.0.1:8080/api/ingest
 ```
+
+## Morgen-Checkliste: Wieder mit dem Roboter verbinden
+
+Wenn der Rechner neu gestartet wurde oder das Netzwerkkabel neu eingesteckt wurde, zuerst immer die GoFa-IP auf dem Kabelinterface sauber setzen. In den bisherigen Setups war das Roboternetz:
+
+```text
+Roboter / RWS / EGM: 192.168.125.1
+PC auf Kabelinterface: 192.168.125.99/24
+Interface: enx806d97057607
+```
+
+### 1. Netzwerk wiederherstellen
+
+In einem Terminal:
+
+```bash
+cd ~/SMAN
+
+sudo ip addr flush dev enx806d97057607
+sudo ip link set enx806d97057607 up
+sudo ip addr add 192.168.125.99/24 dev enx806d97057607
+sudo ip route replace 192.168.125.0/24 dev enx806d97057607 src 192.168.125.99
+```
+
+Dann pruefen:
+
+```bash
+ip addr show enx806d97057607
+ip route get 192.168.125.1
+ping -c 3 192.168.125.1
+```
+
+Wichtig bei `ip route get`:
+
+```text
+192.168.125.1 dev enx806d97057607 src 192.168.125.99
+```
+
+### 2. Dashboard ohne direkten EGM-Zugriff starten
+
+Damit MoveIt den echten Roboter ueber EGM steuern kann, darf das Dashboard den UDP-Port `6511` nicht selbst belegen:
+
+```bash
+cd ~/SMAN
+EGM_ENABLE=0 docker compose up -d --build --force-recreate
+```
+
+Dashboard im Browser:
+
+```text
+http://localhost:8080
+```
+
+Danach einmal hart neu laden:
+
+```text
+Ctrl + Shift + R
+```
+
+### 3. ABB / MoveIt / RViz mit echtem Roboter starten
+
+In einem zweiten Terminal:
+
+```bash
+cd ~/SMAN
+export ROS_LOG_DIR=/tmp
+source /opt/ros/jazzy/setup.bash
+source ~/SMAN/ros2_ws/install/setup.bash
+
+ros2 launch abb_bringup crb15000_complete.launch.py
+```
+
+Im Log muss im Erfolgsfall erscheinen:
+
+```text
+[ABBSystemHardware]: Connected to robot
+ros2_control hardware interface was successfully started!
+```
+
+Danach pruefen:
+
+```bash
+ros2 control list_controllers
+```
+
+Erwartet:
+
+```text
+joint_trajectory_controller active
+joint_state_broadcaster active
+```
+
+### 4. Dashboard live mit ROS `/joint_states` versorgen
+
+In einem dritten Terminal:
+
+```bash
+cd ~/SMAN
+export ROS_LOG_DIR=/tmp
+source /opt/ros/jazzy/setup.bash
+source ~/SMAN/ros2_ws/install/setup.bash
+
+./tools/ros_joint_state_dashboard_bridge.py
+```
+
+Erwartet:
+
+```text
+Forwarding /joint_states to http://127.0.0.1:8080/api/ingest
+Forwarded 1 /joint_states samples
+Forwarded 100 /joint_states samples
+```
+
+Diese Bridge muss waehrend des Betriebs offen bleiben. Wenn sie mit `Ctrl+C` beendet wird, hat das Dashboard keine Live-Daten mehr.
+
+### 5. Was gleichzeitig geht
+
+Diese Kombination funktioniert gleichzeitig:
+
+- MoveIt / ABB-Treiber steuert den echten Roboter ueber EGM
+- Dashboard zeigt live ueber ROS `/joint_states`
+
+Nicht gleichzeitig auf demselben Port gedacht ist:
+
+- Dashboard mit `EGM_ENABLE=1`
+- MoveIt / ABB-Treiber mit echtem EGM
+
+Darum fuer den echten Roboterbetrieb immer:
+
+```text
+EGM_ENABLE=0
+```
+
+### 6. Wenn `Not connected to robot...` erscheint
+
+Dann bekommt `ros2_control_node` keine EGM-Pakete vom Roboter. Pruefen:
+
+```bash
+sudo timeout 5 tcpdump -ni enx806d97057607 'host 192.168.125.1 and udp port 6511'
+```
+
+Gut ist:
+
+```text
+192.168.125.1.6511 > 192.168.125.99.6511
+```
+
+Wenn nichts kommt:
+
+- EGM / RAPID auf der ABB-Seite nicht aktiv
+- Roboter sendet an falsche IP
+- Kabel / Port / Netzwerk nicht korrekt
+
+### 7. Wenn Dashboard `Warte auf ROS2-Daten` zeigt
+
+Dann zuerst pruefen, ob die Bridge laeuft und wirklich Samples schickt.
+
+Test des Dashboard-Ingests:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"kind":"topic","topic":"/joint_states","type":"sensor_msgs/msg/JointState","label":"Joint States","data":{"names":["joint_1"],"positions":[0.5],"velocities":[],"efforts":[]}}'
+```
+
+Antwort:
+
+```json
+{"status":"ok"}
+```
+
+Wenn das funktioniert, ist das Dashboard okay und das Problem liegt bei ROS / Bridge / Browser-Cache.
+
+### 8. Empfohlene Terminal-Aufteilung
+
+Am einfachsten immer mit drei Terminals arbeiten:
+
+1. Netzwerk + Dashboard
+2. ABB / MoveIt / RViz
+3. Dashboard-Bridge
+
+Die Terminals 2 und 3 bleiben normalerweise waehrend des Betriebs offen.
 
 ## MoveIt und RViz
 
@@ -185,3 +399,54 @@ frontend/robot/abb_crb15000_support/LICENSE
 ```
 
 Die App verwendet die Joint-Kette aus `crb15000_5_95_macro.xacro` und koppelt sie an `/joint_states`. Wenn die Mesh-Dateien nicht geladen werden koennen, bleibt automatisch das vereinfachte prozedurale Modell aktiv.
+
+## Mail-Benachrichtigungen
+
+Das Dashboard kann kritische Alarme sofort als Mail senden und im Maintenance-Tab eine Testmail ausloesen.
+Die Empfaenger werden im Dashboard gespeichert; SMTP-Zugangsdaten bleiben in `.env`/Docker-Umgebung.
+
+### Option A: Gmail SMTP
+
+Geeignet fuer schnelle Tests mit einem eigenen Gmail-Konto. In Google muss die 2-Schritt-Bestaetigung aktiv sein, danach ein App-Passwort erstellen.
+
+```bash
+cp .env.example .env
+```
+
+In `.env` setzen:
+
+```text
+SMAN_SMTP_HOST=smtp.gmail.com
+SMAN_SMTP_PORT=587
+SMAN_SMTP_SECURITY=starttls
+SMAN_SMTP_USER=dein.name@gmail.com
+SMAN_SMTP_PASSWORD=dein-app-passwort
+SMAN_MAIL_FROM=dein.name@gmail.com
+SMAN_MAIL_RECIPIENTS=deine.empfaengeradresse@example.com
+```
+
+### Option B: Brevo SMTP
+
+Geeignet fuer kostenlose Transactional-Mails mit eigenem/verifiziertem Absender.
+
+```text
+SMAN_SMTP_HOST=smtp-relay.brevo.com
+SMAN_SMTP_PORT=587
+SMAN_SMTP_SECURITY=starttls
+SMAN_SMTP_USER=dein-brevo-smtp-login
+SMAN_SMTP_PASSWORD=dein-brevo-smtp-key
+SMAN_MAIL_FROM=verifizierter-absender@example.com
+SMAN_MAIL_RECIPIENTS=deine.empfaengeradresse@example.com
+```
+
+Danach Dashboard neu erstellen/starten:
+
+```bash
+docker compose up -d --build --force-recreate
+```
+
+Im Dashboard:
+
+```text
+Maintenance -> Benachrichtigungen -> Empfaenger setzen -> Speichern -> Testmail
+```

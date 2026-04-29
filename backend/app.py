@@ -2,11 +2,16 @@ import asyncio
 import json
 import math
 import os
+import smtplib
 import socket
+import sqlite3
 import struct
 import threading
 import time
 from dataclasses import dataclass
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
+from pathlib import Path
 from typing import Any
 
 import rclpy
@@ -21,6 +26,13 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Float32, Float64, Int32, String
 from tf2_msgs.msg import TFMessage
+
+try:
+    from abb_egm_msgs.msg import EGMState
+    from abb_robot_msgs.msg import SystemState
+except ImportError:  # Local tooling can import this file without the built ABB workspace.
+    EGMState = None
+    SystemState = None
 
 
 DEFAULT_TOPICS = [
@@ -41,6 +53,11 @@ MESSAGE_TYPES = {
     "std_msgs/msg/Float64": Float64,
     "std_msgs/msg/Int32": Int32,
 }
+
+if EGMState is not None:
+    MESSAGE_TYPES["abb_egm_msgs/msg/EGMState"] = EGMState
+if SystemState is not None:
+    MESSAGE_TYPES["abb_robot_msgs/msg/SystemState"] = SystemState
 
 
 @dataclass(frozen=True)
@@ -141,6 +158,49 @@ def serialize_message(message: Any, msg_type: str) -> dict[str, Any]:
             ],
         }
 
+    if msg_type == "abb_egm_msgs/msg/EGMState":
+        channels = []
+        for channel in message.egm_channels:
+            channels.append(
+                {
+                    "name": channel.name,
+                    "active": bool(channel.active),
+                    "egm_convergence_met": bool(channel.egm_convergence_met),
+                    "egm_client_state": int(channel.egm_client_state),
+                    "motor_state": int(channel.motor_state),
+                    "rapid_execution_state": int(channel.rapid_execution_state),
+                    "utilization_rate": float(channel.utilization_rate),
+                }
+            )
+        return {
+            "header_stamp": ros_time_to_float(message.header.stamp),
+            "egm_channels": channels,
+        }
+
+    if msg_type == "abb_robot_msgs/msg/SystemState":
+        return {
+            "header_stamp": ros_time_to_float(message.header.stamp),
+            "motors_on": bool(message.motors_on),
+            "auto_mode": bool(message.auto_mode),
+            "rapid_running": bool(message.rapid_running),
+            "rapid_tasks": [
+                {
+                    "name": task.name,
+                    "type": task.type,
+                    "state": task.state,
+                    "motion_task": bool(task.motion_task),
+                }
+                for task in message.rapid_tasks
+            ],
+            "mechanical_units": [
+                {
+                    "name": unit.name,
+                    "activated": bool(unit.activated),
+                }
+                for unit in message.mechanical_units
+            ],
+        }
+
     if msg_type == "geometry_msgs/msg/PoseStamped":
         return {
             "frame_id": message.header.frame_id,
@@ -214,36 +274,148 @@ def _decode_packed_doubles(value: bytes) -> list[float]:
     return list(struct.unpack(f"<{len(value) // 8}d", value))
 
 
-def parse_egm_joints(packet: bytes) -> list[float] | None:
-    """Extract feedback joint values from an ABB EGMRobot protobuf packet.
-
-    ABB EGM uses protobuf on UDP. The first feedback joint block sits at:
-    EGMRobot.feedBack(2).joints(1).joints(1), packed as float64 degrees.
-    """
-    for field_number, wire_type, value in _protobuf_fields(packet):
-        if field_number != 2 or wire_type != 2:
+def _decode_double_list(message: bytes, field_number: int = 1) -> list[float]:
+    values: list[float] = []
+    for nested_field, nested_wire_type, nested_value in _protobuf_fields(message):
+        if nested_field != field_number:
             continue
-        for feedback_field, feedback_wire_type, feedback_value in _protobuf_fields(value):
-            if feedback_field != 1 or feedback_wire_type != 2:
-                continue
-            joint_values: list[float] = []
-            for joint_field, joint_wire_type, joint_value in _protobuf_fields(feedback_value):
-                if joint_field != 1:
-                    continue
-                if joint_wire_type == 1:
-                    joint_values.append(struct.unpack("<d", joint_value)[0])
-                elif joint_wire_type == 2:
-                    joint_values.extend(_decode_packed_doubles(joint_value))
-            if len(joint_values) >= 6:
-                return [math.radians(value) for value in joint_values[:6]]
+        if nested_wire_type == 1:
+            values.append(struct.unpack("<d", nested_value)[0])
+        elif nested_wire_type == 2:
+            values.extend(_decode_packed_doubles(nested_value))
+    return values
+
+
+def _decode_cartesian(message: bytes) -> dict[str, float]:
+    result: dict[str, float] = {}
+    axes = {1: "x", 2: "y", 3: "z"}
+    for field_number, wire_type, value in _protobuf_fields(message):
+        if field_number in axes and wire_type == 1:
+            result[axes[field_number]] = struct.unpack("<d", value)[0]
+    return result
+
+
+def _decode_pose(message: bytes) -> dict[str, Any]:
+    pose: dict[str, Any] = {}
+    for field_number, wire_type, value in _protobuf_fields(message):
+        if wire_type != 2:
+            continue
+        if field_number == 1:
+            pose["position_mm"] = _decode_cartesian(value)
+        elif field_number == 2:
+            quaternion = _decode_double_list(value)
+            if len(quaternion) >= 4:
+                pose["orientation_quaternion"] = {
+                    "u0": quaternion[0],
+                    "u1": quaternion[1],
+                    "u2": quaternion[2],
+                    "u3": quaternion[3],
+                }
+        elif field_number == 3:
+            pose["orientation_euler_deg"] = _decode_cartesian(value)
+    return pose
+
+
+def _decode_planned_or_feedback(message: bytes) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for field_number, wire_type, value in _protobuf_fields(message):
+        if wire_type != 2:
+            continue
+        if field_number == 1:
+            joints = _decode_double_list(value)
+            if joints:
+                result["joints_deg"] = joints
+                result["joints_rad"] = [math.radians(item) for item in joints]
+        elif field_number == 2:
+            pose = _decode_pose(value)
+            if pose:
+                result["cartesian"] = pose
+        elif field_number == 3:
+            external_joints = _decode_double_list(value)
+            if external_joints:
+                result["external_joints"] = external_joints
+        elif field_number == 4:
+            clock: dict[str, int] = {}
+            for clock_field, clock_wire_type, clock_value in _protobuf_fields(value):
+                if clock_wire_type == 0 and clock_field == 1:
+                    clock["sec"] = int(clock_value)
+                elif clock_wire_type == 0 and clock_field == 2:
+                    clock["usec"] = int(clock_value)
+            if clock:
+                result["clock"] = clock
+    return result
+
+
+def _decode_single_state(message: bytes) -> int | None:
+    for field_number, wire_type, value in _protobuf_fields(message):
+        if field_number == 1 and wire_type == 0:
+            return int(value)
     return None
 
 
+def parse_egm_robot(packet: bytes) -> dict[str, Any] | None:
+    """Decode the useful parts of an ABB EgmRobot protobuf packet.
+
+    The app keeps a lightweight decoder here so the dashboard can run without
+    generated ABB protobuf Python modules inside the container.
+    """
+    result: dict[str, Any] = {}
+    for field_number, wire_type, value in _protobuf_fields(packet):
+        if field_number == 1 and wire_type == 2:
+            header: dict[str, int] = {}
+            for header_field, header_wire_type, header_value in _protobuf_fields(value):
+                if header_wire_type == 0 and header_field == 1:
+                    header["seqno"] = int(header_value)
+                elif header_wire_type == 0 and header_field == 2:
+                    header["tm_ms"] = int(header_value)
+                elif header_wire_type == 0 and header_field == 3:
+                    header["message_type"] = int(header_value)
+            result["header"] = header
+        elif field_number == 2 and wire_type == 2:
+            result["feedback"] = _decode_planned_or_feedback(value)
+        elif field_number == 3 and wire_type == 2:
+            result["planned"] = _decode_planned_or_feedback(value)
+        elif field_number == 4 and wire_type == 2:
+            result["motor_state"] = _decode_single_state(value)
+        elif field_number == 5 and wire_type == 2:
+            result["mci_state"] = _decode_single_state(value)
+        elif field_number == 6 and wire_type == 0:
+            result["mci_convergence_met"] = bool(value)
+        elif field_number == 7 and wire_type == 2:
+            result["test_signals"] = _decode_double_list(value, 1)
+        elif field_number == 8 and wire_type == 2:
+            result["rapid_exec_state"] = _decode_single_state(value)
+        elif field_number == 9 and wire_type == 2:
+            result["measured_force"] = _decode_double_list(value, 1)
+        elif field_number == 10 and wire_type == 1:
+            result["utilization_rate"] = struct.unpack("<d", value)[0]
+
+    feedback_joints = result.get("feedback", {}).get("joints_rad")
+    if not feedback_joints:
+        return result if result else None
+    return result
+
+
+def parse_egm_joints(packet: bytes) -> list[float] | None:
+    robot = parse_egm_robot(packet)
+    joints = robot.get("feedback", {}).get("joints_rad") if robot else None
+    if isinstance(joints, list) and len(joints) >= 6:
+        return joints[:6]
+    return None
+
+
+def label_state(value: int | None, labels: dict[int, str]) -> str:
+    if value is None:
+        return "unknown"
+    return labels.get(value, f"unknown:{value}")
+
+
 class PayloadStore:
-    def __init__(self) -> None:
+    def __init__(self, persistence: "DashboardPersistence | None" = None) -> None:
         self._lock = threading.Lock()
         self._last_seen: dict[str, float] = {}
         self._latest_payloads: dict[str, dict[str, Any]] = {}
+        self._persistence = persistence
 
     def record(self, payload: dict[str, Any]) -> None:
         topic = payload.get("topic")
@@ -253,12 +425,14 @@ class PayloadStore:
         with self._lock:
             self._last_seen[topic] = float(received_at)
             self._latest_payloads[topic] = payload
+        if self._persistence is not None:
+            self._persistence.record_payload(payload)
 
     def status_payload(self) -> dict[str, Any]:
         now = time.time()
         with self._lock:
             items = list(self._last_seen.items())
-        return {
+        payload = {
             "kind": "status",
             "ros_ok": rclpy.ok(),
             "topics": [
@@ -271,6 +445,9 @@ class PayloadStore:
             ],
             "time": now,
         }
+        if self._persistence is not None:
+            self._persistence.observe_status(payload)
+        return payload
 
     def snapshot_payload(self) -> dict[str, Any]:
         with self._lock:
@@ -280,6 +457,460 @@ class PayloadStore:
             "topics": topics,
             "status": self.status_payload(),
         }
+
+
+class DashboardPersistence:
+    def __init__(self, data_dir: str) -> None:
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.db_path = self.data_dir / "sman_dashboard.sqlite3"
+        self._lock = threading.Lock()
+        self._last_positions: list[float] | None = None
+        self._last_velocity_signs: list[int] | None = None
+        self._last_joint_time: float | None = None
+        self._last_event_times: dict[str, float] = {}
+        self._init_db()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.db_path, timeout=10)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def _init_db(self) -> None:
+        with self._connect() as db:
+            db.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS telemetry_agg (
+                    bucket INTEGER PRIMARY KEY,
+                    samples INTEGER NOT NULL DEFAULT 0,
+                    joint_distance REAL NOT NULL DEFAULT 0,
+                    max_velocity REAL NOT NULL DEFAULT 0,
+                    avg_velocity_sum REAL NOT NULL DEFAULT 0,
+                    direction_changes INTEGER NOT NULL DEFAULT 0,
+                    near_limit_seconds REAL NOT NULL DEFAULT 0,
+                    utilization_max REAL,
+                    latency_sum_ms REAL NOT NULL DEFAULT 0,
+                    jitter_sum_ms REAL NOT NULL DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS axis_agg (
+                    bucket INTEGER NOT NULL,
+                    axis INTEGER NOT NULL,
+                    distance REAL NOT NULL DEFAULT 0,
+                    direction_changes INTEGER NOT NULL DEFAULT 0,
+                    near_limit_seconds REAL NOT NULL DEFAULT 0,
+                    max_velocity REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY (bucket, axis)
+                );
+
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at REAL NOT NULL,
+                    severity TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    detail TEXT NOT NULL,
+                    payload TEXT NOT NULL DEFAULT '{}',
+                    acknowledged_at REAL,
+                    acknowledged_by TEXT,
+                    comment TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS mail_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    recipients TEXT NOT NULL,
+                    sent_at REAL,
+                    error TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                """
+            )
+            self._seed_setting(db, "mail_recipients", os.getenv("SMAN_MAIL_RECIPIENTS", ""))
+            self._seed_setting(db, "mail_immediate_critical", "1")
+            self._seed_setting(db, "mail_daily_summary", "1")
+            self._seed_setting(db, "mail_weekly_report", "1")
+
+    def _seed_setting(self, db: sqlite3.Connection, key: str, value: str) -> None:
+        db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
+
+    def _setting(self, db: sqlite3.Connection, key: str, default: str = "") -> str:
+        row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return str(row["value"]) if row else default
+
+    def record_payload(self, payload: dict[str, Any]) -> None:
+        topic = payload.get("topic")
+        if topic == "/joint_states":
+            self._record_joint_state(payload)
+        elif topic == "/egm/state" or payload.get("type") == "abb_egm_msgs/msg/EGMState":
+            self._record_egm_state(payload)
+
+    def _record_joint_state(self, payload: dict[str, Any]) -> None:
+        data = payload.get("data") or {}
+        positions = [float(value) for value in data.get("positions", []) if isinstance(value, (int, float))]
+        if len(positions) < 6:
+            return
+
+        received_at = float(payload.get("received_at", time.time()))
+        header_stamp = data.get("header_stamp")
+        bucket = int(received_at)
+        dt = 0.0
+        deltas = [0.0] * len(positions)
+        velocities = [float(value) for value in data.get("velocities", []) if isinstance(value, (int, float))]
+
+        with self._lock:
+            if self._last_positions is not None and self._last_joint_time is not None:
+                dt = max(0.0, min(2.0, received_at - self._last_joint_time))
+                deltas = [abs(value - (self._last_positions[index] if index < len(self._last_positions) else value)) for index, value in enumerate(positions)]
+                if not velocities and dt > 0:
+                    velocities = [delta / dt for delta in deltas]
+
+            if not velocities:
+                velocities = [0.0] * len(positions)
+
+            signs = [1 if value > 0.002 else -1 if value < -0.002 else 0 for value in velocities]
+            if self._last_velocity_signs is None:
+                direction_changes = 0
+                axis_direction_changes = [0] * len(positions)
+            else:
+                axis_direction_changes = [
+                    1 if sign != 0 and previous != 0 and sign != previous else 0
+                    for sign, previous in zip(signs, self._last_velocity_signs)
+                ]
+                direction_changes = sum(axis_direction_changes)
+
+            near_limit_seconds = dt if any(abs(value) > math.pi * 0.86 for value in positions) else 0.0
+            axis_near_limit = [dt if abs(value) > math.pi * 0.86 else 0.0 for value in positions]
+            max_velocity = max((abs(value) for value in velocities), default=0.0)
+            avg_velocity = sum(abs(value) for value in velocities) / max(1, len(velocities))
+            latency_ms = 0.0
+            if isinstance(header_stamp, (int, float)) and header_stamp > 0:
+                latency_ms = max(0.0, (received_at - float(header_stamp)) * 1000)
+
+            self._last_positions = list(positions)
+            self._last_velocity_signs = signs
+            self._last_joint_time = received_at
+
+        joint_distance = sum(deltas)
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO telemetry_agg(bucket, samples, joint_distance, max_velocity, avg_velocity_sum,
+                    direction_changes, near_limit_seconds, latency_sum_ms)
+                VALUES (?, 1, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(bucket) DO UPDATE SET
+                    samples = samples + 1,
+                    joint_distance = joint_distance + excluded.joint_distance,
+                    max_velocity = MAX(max_velocity, excluded.max_velocity),
+                    avg_velocity_sum = avg_velocity_sum + excluded.avg_velocity_sum,
+                    direction_changes = direction_changes + excluded.direction_changes,
+                    near_limit_seconds = near_limit_seconds + excluded.near_limit_seconds,
+                    latency_sum_ms = latency_sum_ms + excluded.latency_sum_ms
+                """,
+                (bucket, joint_distance, max_velocity, avg_velocity, direction_changes, near_limit_seconds, latency_ms),
+            )
+            for index, delta in enumerate(deltas[:6]):
+                axis_velocity = abs(velocities[index]) if index < len(velocities) else 0.0
+                db.execute(
+                    """
+                    INSERT INTO axis_agg(bucket, axis, distance, direction_changes, near_limit_seconds, max_velocity)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(bucket, axis) DO UPDATE SET
+                        distance = distance + excluded.distance,
+                        direction_changes = direction_changes + excluded.direction_changes,
+                        near_limit_seconds = near_limit_seconds + excluded.near_limit_seconds,
+                        max_velocity = MAX(max_velocity, excluded.max_velocity)
+                    """,
+                    (bucket, index + 1, delta, axis_direction_changes[index] if index < len(axis_direction_changes) else 0, axis_near_limit[index], axis_velocity),
+                )
+
+        if max_velocity > 1.6:
+            self.record_event(
+                "velocity_spike",
+                "warning",
+                "Hohe Achsgeschwindigkeit",
+                f"Maximal {max_velocity:.2f} rad/s gemessen.",
+                {"max_velocity": max_velocity},
+                cooldown_sec=300,
+            )
+
+    def _record_egm_state(self, payload: dict[str, Any]) -> None:
+        data = payload.get("data") or {}
+        utilization = data.get("utilization_rate")
+        if utilization is None and data.get("egm_channels"):
+            utilization = max(
+                (channel.get("utilization_rate", 0) for channel in data.get("egm_channels", [])),
+                default=None,
+            )
+        if isinstance(utilization, (int, float)):
+            bucket = int(float(payload.get("received_at", time.time())))
+            with self._connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO telemetry_agg(bucket, samples, utilization_max)
+                    VALUES (?, 0, ?)
+                    ON CONFLICT(bucket) DO UPDATE SET
+                        utilization_max = MAX(COALESCE(utilization_max, 0), excluded.utilization_max)
+                    """,
+                    (bucket, float(utilization)),
+                )
+            if utilization > 100:
+                self.record_event(
+                    "egm_utilization_high",
+                    "critical",
+                    "EGM Utilization zu hoch",
+                    f"EGM meldet {utilization:.1f} %. Bewegungsreferenzen pruefen.",
+                    {"utilization_rate": utilization},
+                    cooldown_sec=300,
+                )
+
+    def observe_status(self, payload: dict[str, Any]) -> None:
+        joint_topic = next((topic for topic in payload.get("topics", []) if topic.get("name") == "/joint_states"), None)
+        age = joint_topic.get("age_sec") if joint_topic else None
+        if isinstance(age, (int, float)) and age > 3.0:
+            self.record_event(
+                "stream_stale",
+                "critical",
+                "Kein Live-Datenstrom",
+                f"Seit {age:.1f} s keine aktuellen Joint-State-Daten empfangen.",
+                {"age_sec": age},
+                cooldown_sec=300,
+            )
+
+    def record_event(
+        self,
+        event_type: str,
+        severity: str,
+        title: str,
+        detail: str,
+        payload: dict[str, Any] | None = None,
+        cooldown_sec: int = 60,
+    ) -> None:
+        now = time.time()
+        key = f"{event_type}:{severity}"
+        with self._lock:
+            if now - self._last_event_times.get(key, 0) < cooldown_sec:
+                return
+            self._last_event_times[key] = now
+
+        payload_json = json.dumps(payload or {}, separators=(",", ":"))
+        with self._connect() as db:
+            cursor = db.execute(
+                "INSERT INTO events(created_at, severity, type, title, detail, payload) VALUES (?, ?, ?, ?, ?, ?)",
+                (now, severity, event_type, title, detail, payload_json),
+            )
+            event_id = cursor.lastrowid
+            if severity == "critical" and self._setting(db, "mail_immediate_critical", "1") == "1":
+                self._queue_mail(db, f"SMAN Alarm: {title}", f"{title}\n\n{detail}\n\nEvent #{event_id}", severity)
+
+    def _queue_mail(self, db: sqlite3.Connection, subject: str, body: str, severity: str, recipients_override: str | None = None) -> int:
+        recipients = recipients_override if recipients_override is not None else self._setting(db, "mail_recipients", "")
+        status = "queued" if recipients.strip() else "needs_recipients"
+        cursor = db.execute(
+            "INSERT INTO mail_queue(created_at, status, severity, subject, body, recipients) VALUES (?, ?, ?, ?, ?, ?)",
+            (time.time(), status, severity, subject, body, recipients),
+        )
+        return int(cursor.lastrowid)
+
+    def queue_test_mail(self, recipients: str = "") -> dict[str, Any]:
+        with self._connect() as db:
+            target = recipients.strip() or self._setting(db, "mail_recipients", "")
+            mail_id = self._queue_mail(
+                db,
+                "SMAN Testmail",
+                "Diese Testmail wurde vom SMAN ABB GoFa Dashboard gesendet.\n\nWenn du sie bekommst, ist SMTP korrekt konfiguriert.",
+                "info",
+                recipients_override=target,
+            )
+            status = db.execute("SELECT status FROM mail_queue WHERE id = ?", (mail_id,)).fetchone()["status"]
+            if status == "queued" and not os.getenv("SMAN_SMTP_HOST"):
+                db.execute("UPDATE mail_queue SET status = ?, error = ? WHERE id = ?", ("smtp_missing", "SMAN_SMTP_HOST is not configured", mail_id))
+        self.send_pending_mail()
+        with self._connect() as db:
+            row = db.execute("SELECT status, error FROM mail_queue WHERE id = ?", (mail_id,)).fetchone()
+        return {"status": row["status"], "mail_id": mail_id, "error": row["error"]}
+
+    def notification_settings(self) -> dict[str, Any]:
+        with self._connect() as db:
+            return {
+                "recipients": self._setting(db, "mail_recipients", ""),
+                "immediate_critical": self._setting(db, "mail_immediate_critical", "1") == "1",
+                "daily_summary": self._setting(db, "mail_daily_summary", "1") == "1",
+                "weekly_report": self._setting(db, "mail_weekly_report", "1") == "1",
+                "smtp_configured": bool(os.getenv("SMAN_SMTP_HOST")),
+            }
+
+    def update_notification_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+        updates = {
+            "mail_recipients": str(settings.get("recipients", "")),
+            "mail_immediate_critical": "1" if settings.get("immediate_critical", True) else "0",
+            "mail_daily_summary": "1" if settings.get("daily_summary", True) else "0",
+            "mail_weekly_report": "1" if settings.get("weekly_report", True) else "0",
+        }
+        with self._connect() as db:
+            for key, value in updates.items():
+                db.execute(
+                    "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (key, value),
+                )
+        return self.notification_settings()
+
+    def acknowledge_event(self, event_id: int, acknowledged_by: str = "dashboard", comment: str = "") -> dict[str, str]:
+        with self._connect() as db:
+            db.execute(
+                """
+                UPDATE events
+                SET acknowledged_at = COALESCE(acknowledged_at, ?), acknowledged_by = ?, comment = ?
+                WHERE id = ?
+                """,
+                (time.time(), acknowledged_by, comment, event_id),
+            )
+        return {"status": "ok"}
+
+    def summary(self, window: str = "24h") -> dict[str, Any]:
+        seconds_by_window = {
+            "1h": 3600,
+            "24h": 86400,
+            "7d": 7 * 86400,
+            "30d": 30 * 86400,
+            "90d": 90 * 86400,
+        }
+        seconds = seconds_by_window.get(window, 86400)
+        since = int(time.time() - seconds)
+        with self._connect() as db:
+            row = db.execute(
+                """
+                SELECT
+                    COALESCE(SUM(samples), 0) AS samples,
+                    COALESCE(SUM(joint_distance), 0) AS joint_distance,
+                    COALESCE(MAX(max_velocity), 0) AS max_velocity,
+                    COALESCE(SUM(avg_velocity_sum), 0) AS avg_velocity_sum,
+                    COALESCE(SUM(direction_changes), 0) AS direction_changes,
+                    COALESCE(SUM(near_limit_seconds), 0) AS near_limit_seconds,
+                    COALESCE(MAX(utilization_max), 0) AS utilization_max,
+                    COALESCE(SUM(latency_sum_ms), 0) AS latency_sum_ms
+                FROM telemetry_agg
+                WHERE bucket >= ?
+                """,
+                (since,),
+            ).fetchone()
+            axis_rows = db.execute(
+                """
+                SELECT axis, COALESCE(SUM(distance), 0) AS distance,
+                    COALESCE(SUM(direction_changes), 0) AS direction_changes,
+                    COALESCE(SUM(near_limit_seconds), 0) AS near_limit_seconds,
+                    COALESCE(MAX(max_velocity), 0) AS max_velocity
+                FROM axis_agg
+                WHERE bucket >= ?
+                GROUP BY axis
+                ORDER BY axis
+                """,
+                (since,),
+            ).fetchall()
+            events = db.execute(
+                """
+                SELECT id, created_at, severity, type, title, detail, acknowledged_at, acknowledged_by, comment
+                FROM events
+                WHERE created_at >= ?
+                ORDER BY created_at DESC
+                LIMIT 50
+                """,
+                (time.time() - max(seconds, 86400),),
+            ).fetchall()
+            mail_rows = db.execute(
+                "SELECT id, created_at, status, severity, subject, recipients, sent_at, error FROM mail_queue ORDER BY created_at DESC LIMIT 20"
+            ).fetchall()
+
+        samples = int(row["samples"])
+        avg_velocity = float(row["avg_velocity_sum"]) / samples if samples else 0.0
+        axis_metrics = []
+        for axis_row in axis_rows:
+            distance = float(axis_row["distance"])
+            direction_changes = int(axis_row["direction_changes"])
+            near_limit = float(axis_row["near_limit_seconds"])
+            max_velocity = float(axis_row["max_velocity"])
+            wear_score = min(100.0, distance * 4.5 + direction_changes * 0.12 + near_limit * 2.8 + max_velocity * 8)
+            axis_metrics.append(
+                {
+                    "axis": int(axis_row["axis"]),
+                    "distance_rad": distance,
+                    "direction_changes": direction_changes,
+                    "near_limit_seconds": near_limit,
+                    "max_velocity_rad_s": max_velocity,
+                    "wear_score": round(wear_score, 1),
+                }
+            )
+
+        total_wear = max((item["wear_score"] for item in axis_metrics), default=0.0)
+        quality_penalty = min(25.0, float(row["utilization_max"]) / 6)
+        health_score = max(0, round(100 - total_wear * 0.35 - quality_penalty))
+        return {
+            "window": window,
+            "samples": samples,
+            "joint_distance_rad": float(row["joint_distance"]),
+            "max_velocity_rad_s": float(row["max_velocity"]),
+            "avg_velocity_rad_s": avg_velocity,
+            "direction_changes": int(row["direction_changes"]),
+            "near_limit_seconds": float(row["near_limit_seconds"]),
+            "utilization_max": float(row["utilization_max"]),
+            "latency_avg_ms": float(row["latency_sum_ms"]) / samples if samples else 0.0,
+            "health_score": health_score,
+            "axis": axis_metrics,
+            "events": [dict(item) for item in events],
+            "mail_queue": [dict(item) for item in mail_rows],
+            "notification_settings": self.notification_settings(),
+        }
+
+    def send_pending_mail(self) -> None:
+        smtp_host = os.getenv("SMAN_SMTP_HOST")
+        if not smtp_host:
+            return
+        smtp_port = int(os.getenv("SMAN_SMTP_PORT", "587"))
+        smtp_security = os.getenv("SMAN_SMTP_SECURITY", "starttls").lower()
+        smtp_user = os.getenv("SMAN_SMTP_USER", "")
+        smtp_password = os.getenv("SMAN_SMTP_PASSWORD", "")
+        sender = os.getenv("SMAN_MAIL_FROM", smtp_user or "sman-dashboard@localhost")
+
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id, subject, body, recipients FROM mail_queue WHERE status = 'queued' ORDER BY created_at LIMIT 5"
+            ).fetchall()
+
+        for row in rows:
+            recipients = [item.strip() for item in str(row["recipients"]).split(",") if item.strip()]
+            if not recipients:
+                continue
+            message = EmailMessage()
+            message["Subject"] = row["subject"]
+            message["From"] = sender
+            message["To"] = ", ".join(recipients)
+            message["Date"] = formatdate(localtime=True)
+            message["Message-ID"] = make_msgid(domain="sman-dashboard.local")
+            message.set_content(row["body"])
+            try:
+                smtp_class = smtplib.SMTP_SSL if smtp_security == "ssl" else smtplib.SMTP
+                with smtp_class(smtp_host, smtp_port, timeout=10) as smtp:
+                    if smtp_security == "starttls":
+                        smtp.starttls()
+                    if smtp_user:
+                        smtp.login(smtp_user, smtp_password)
+                    smtp.send_message(message)
+                status, error = "sent", None
+            except Exception as exc:  # pragma: no cover - depends on external SMTP.
+                status, error = "error", str(exc)
+            with self._connect() as db:
+                db.execute(
+                    "UPDATE mail_queue SET status = ?, sent_at = ?, error = ? WHERE id = ?",
+                    (status, time.time() if status == "sent" else None, error, row["id"]),
+                )
 
 
 def enqueue_payload(queue: asyncio.Queue, payload: dict[str, Any]) -> None:
@@ -389,9 +1020,13 @@ def egm_udp_listener(
             return
 
         try:
-            positions = parse_egm_joints(packet)
+            robot = parse_egm_robot(packet)
         except (ValueError, struct.error):
             continue
+        if robot is None:
+            continue
+
+        positions = robot.get("feedback", {}).get("joints_rad")
         if positions is None:
             continue
 
@@ -415,6 +1050,37 @@ def egm_udp_listener(
         store.record(safe_payload)
         loop.call_soon_threadsafe(enqueue_payload, queue, safe_payload)
 
+        egm_payload = {
+            "kind": "topic",
+            "topic": "/egm/state",
+            "type": "abb/egm/RobotState",
+            "label": "EGM State",
+            "received_at": now,
+            "source": f"egm:{address[0]}:{address[1]}",
+            "data": {
+                "header": robot.get("header", {}),
+                "planned": robot.get("planned", {}),
+                "feedback": {
+                    key: value
+                    for key, value in robot.get("feedback", {}).items()
+                    if key != "joints_rad"
+                },
+                "motor_state": robot.get("motor_state"),
+                "motor_state_label": label_state(robot.get("motor_state"), {0: "undefined", 1: "on", 2: "off"}),
+                "mci_state": robot.get("mci_state"),
+                "mci_state_label": label_state(robot.get("mci_state"), {0: "undefined", 1: "error", 2: "stopped", 3: "running"}),
+                "mci_convergence_met": robot.get("mci_convergence_met"),
+                "rapid_exec_state": robot.get("rapid_exec_state"),
+                "rapid_exec_state_label": label_state(robot.get("rapid_exec_state"), {0: "undefined", 1: "stopped", 2: "running"}),
+                "measured_force": robot.get("measured_force", []),
+                "test_signals": robot.get("test_signals", []),
+                "utilization_rate": robot.get("utilization_rate"),
+            },
+        }
+        safe_egm_payload = json_safe(egm_payload)
+        store.record(safe_egm_payload)
+        loop.call_soon_threadsafe(enqueue_payload, queue, safe_egm_payload)
+
 
 app = FastAPI(title="SMAN ABB GoFa ROS2 Dashboard")
 app.add_middleware(
@@ -429,9 +1095,11 @@ TOPICS = read_topics()
 EGM_ENABLE = os.getenv("EGM_ENABLE", "1").lower() not in {"0", "false", "no"}
 EGM_HOST = os.getenv("EGM_HOST", "0.0.0.0")
 EGM_PORT = int(os.getenv("EGM_PORT", "6511"))
+SMAN_DATA_DIR = os.getenv("SMAN_DATA_DIR", "/tmp/sman-dashboard")
 EVENT_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=1000)
 CONNECTIONS = ConnectionManager()
-STORE = PayloadStore()
+PERSISTENCE = DashboardPersistence(SMAN_DATA_DIR)
+STORE = PayloadStore(PERSISTENCE)
 ROS_NODE: RosTopicBridge | None = None
 ROS_THREAD: threading.Thread | None = None
 EGM_THREAD: threading.Thread | None = None
@@ -459,6 +1127,12 @@ async def status_loop() -> None:
         await asyncio.sleep(1)
 
 
+async def notification_loop() -> None:
+    while True:
+        await asyncio.to_thread(PERSISTENCE.send_pending_mail)
+        await asyncio.sleep(30)
+
+
 @app.on_event("startup")
 async def startup() -> None:
     global ROS_THREAD, EGM_THREAD
@@ -474,6 +1148,7 @@ async def startup() -> None:
         EGM_THREAD.start()
     asyncio.create_task(broadcaster())
     asyncio.create_task(status_loop())
+    asyncio.create_task(notification_loop())
 
 
 @app.on_event("shutdown")
@@ -506,6 +1181,36 @@ async def ingest(payload: dict[str, Any]) -> dict[str, str]:
 @app.get("/api/ingest")
 async def ingest_status() -> dict[str, str]:
     return {"status": "ready", "method": "POST"}
+
+
+@app.get("/api/history/summary")
+async def history_summary(window: str = "24h") -> dict[str, Any]:
+    return await asyncio.to_thread(PERSISTENCE.summary, window)
+
+
+@app.get("/api/settings/notifications")
+async def notification_settings() -> dict[str, Any]:
+    return await asyncio.to_thread(PERSISTENCE.notification_settings)
+
+
+@app.post("/api/settings/notifications")
+async def update_notification_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    return await asyncio.to_thread(PERSISTENCE.update_notification_settings, settings)
+
+
+@app.post("/api/mail/test")
+async def send_test_mail(payload: dict[str, Any]) -> dict[str, Any]:
+    return await asyncio.to_thread(PERSISTENCE.queue_test_mail, str(payload.get("recipients", "")))
+
+
+@app.post("/api/events/{event_id}/ack")
+async def acknowledge_event(event_id: int, payload: dict[str, Any]) -> dict[str, str]:
+    return await asyncio.to_thread(
+        PERSISTENCE.acknowledge_event,
+        event_id,
+        str(payload.get("acknowledged_by", "dashboard")),
+        str(payload.get("comment", "")),
+    )
 
 
 @app.websocket("/ws")

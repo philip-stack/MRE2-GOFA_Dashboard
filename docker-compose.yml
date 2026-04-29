@@ -4,12 +4,24 @@ services:
     container_name: sman-gofa-dashboard
     network_mode: host
     ipc: host
+    cap_add:
+      - NET_ADMIN
     environment:
       ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-0}"
       RMW_IMPLEMENTATION: "${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
       EGM_ENABLE: "${EGM_ENABLE:-1}"
       EGM_HOST: "${EGM_HOST:-0.0.0.0}"
       EGM_PORT: "${EGM_PORT:-6511}"
+      SMAN_DATA_DIR: "${SMAN_DATA_DIR:-/app/data}"
+      SMAN_MAIL_RECIPIENTS: "${SMAN_MAIL_RECIPIENTS:-}"
+      SMAN_SMTP_HOST: "${SMAN_SMTP_HOST:-}"
+      SMAN_SMTP_PORT: "${SMAN_SMTP_PORT:-587}"
+      SMAN_SMTP_SECURITY: "${SMAN_SMTP_SECURITY:-starttls}"
+      SMAN_SMTP_USER: "${SMAN_SMTP_USER:-}"
+      SMAN_SMTP_PASSWORD: "${SMAN_SMTP_PASSWORD:-}"
+      SMAN_MAIL_FROM: "${SMAN_MAIL_FROM:-}"
+      SMAN_HOST_INTERFACE: "${SMAN_HOST_INTERFACE:-}"
+      SMAN_EXTRA_HOST_IP: "${SMAN_EXTRA_HOST_IP:-}"
       ROS_TOPICS: >
         [
           {"name": "/joint_states", "type": "sensor_msgs/msg/JointState", "label": "Joint States"},
@@ -17,6 +29,5 @@ services:
           {"name": "/diagnostics", "type": "diagnostic_msgs/msg/DiagnosticArray", "label": "Diagnostics"}
         ]
     volumes:
-      - ./frontend:/app/frontend:ro
-      - ./backend:/app/backend:ro
+      - ./data:/app/data
     restart: unless-stopped

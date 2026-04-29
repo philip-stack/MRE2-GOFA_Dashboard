@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SMAN ABB GoFa Dashboard</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=live-bridge-2" />
+    <link rel="stylesheet" href="/assets/styles.css?v=maintenance-demo-2" />
   </head>
   <body>
     <main class="shell">
@@ -16,12 +16,16 @@
         <div class="topbar-actions">
           <div class="view-switcher" role="tablist" aria-label="Dashboard Ansicht">
             <button class="view-tab active" id="userViewTab" type="button" role="tab" aria-selected="true" data-view="user">
-              User
+              Betrieb
+            </button>
+            <button class="view-tab" id="maintenanceViewTab" type="button" role="tab" aria-selected="false" data-view="maintenance">
+              Maintenance
             </button>
             <button class="view-tab" id="developerViewTab" type="button" role="tab" aria-selected="false" data-view="developer">
               Developer
             </button>
           </div>
+          <button class="demo-button" id="demoModeButton" type="button">Demo</button>
           <div class="status" id="connectionStatus">
             <span class="dot"></span>
             <span>Verbinde...</span>
@@ -31,11 +35,11 @@
 
       <section class="metrics showcase-metrics" id="metricStrip">
         <article class="metric status-card" id="readyCard">
-          <span>Robot Ready</span>
+          <span>Betriebszustand</span>
           <strong id="readyState">wartet</strong>
         </article>
         <article class="metric status-card" id="motionCard">
-          <span>Motion</span>
+          <span>Bewegung</span>
           <strong id="motionState">Idle</strong>
         </article>
         <article class="metric telemetry-card">
@@ -61,8 +65,52 @@
           <article class="panel widget-card">
             <div class="panel-header compact">
               <div>
+                <p class="eyebrow">Gesamtzustand</p>
+                <h2>Health Score</h2>
+              </div>
+              <span id="healthScoreValue">100</span>
+            </div>
+            <div class="score-meter">
+              <div class="score-ring" id="healthScoreRing"><strong>100</strong><span>OK</span></div>
+              <div class="reason-list" id="healthReasonList"></div>
+            </div>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
                 <p class="eyebrow">Live Daten</p>
-                <h2>Joint Aktivität</h2>
+                <h2>Datenqualität</h2>
+              </div>
+              <span id="dataQualityLabel">stabil</span>
+            </div>
+            <div class="quality-summary">
+              <div><span>Aktualität</span><strong id="userFreshnessValue">-</strong></div>
+              <div><span>Signal</span><strong id="userSignalValue">wartet</strong></div>
+              <div><span>Hinweise</span><strong id="userIssueCount">0</strong></div>
+            </div>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Betrieb</p>
+                <h2>Stillstand & Zyklus</h2>
+              </div>
+              <span id="cycleStateValue">bereit</span>
+            </div>
+            <div class="quality-summary">
+              <div><span>Stillstand</span><strong id="idleValue">0.0 s</strong></div>
+              <div><span>Zyklus</span><strong id="cycleValue">-</strong></div>
+              <div><span>TCP-Bahn</span><strong id="trajectoryValue">0 Samples</strong></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="widget-grid user-widget-grid">
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">Live Aktivität</p>
+                <h2>Achsbewegung</h2>
               </div>
               <span id="jointActivityValue">0.0 rad/s</span>
             </div>
@@ -108,15 +156,16 @@
               <div><span>Yaw</span><strong id="tcpYaw">0.0 deg</strong></div>
             </div>
           </article>
-          <article class="panel widget-card">
+
+          <article class="panel workspace-card">
             <div class="panel-header compact">
               <div>
-                <p class="eyebrow">Trajectory</p>
-                <h2>TCP Verlauf</h2>
+                <p class="eyebrow">Arbeitsraum</p>
+                <h2>TCP Draufsicht</h2>
               </div>
-              <span id="trajectoryValue">0 Samples</span>
+              <span id="workspaceValue">0.00 m</span>
             </div>
-            <canvas class="trajectory-chart" id="trajectoryChart" aria-label="Live Trajectory TCP Verlauf"></canvas>
+            <canvas class="workspace-map" id="workspaceMap" aria-label="Live Draufsicht TCP Position"></canvas>
           </article>
         </section>
 
@@ -153,11 +202,94 @@
           <article class="panel">
             <div class="panel-header">
               <div>
-                <p class="eyebrow">Status</p>
-                <h2>Topics</h2>
+                <p class="eyebrow">Betrieb</p>
+                <h2>Aktive Warnungen</h2>
               </div>
             </div>
-            <div class="topic-list" id="topicList"></div>
+            <div class="health-list" id="userWarningList"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="dashboard-view" id="maintenanceDashboard" data-dashboard-view="maintenance" aria-labelledby="maintenanceViewTab" hidden>
+        <section class="maintenance-toolbar">
+          <div>
+            <p class="eyebrow">Historie</p>
+            <h2>Wartung & Trends</h2>
+          </div>
+          <div class="segmented" id="maintenanceWindow">
+            <button type="button" class="active" data-window="1h">1h</button>
+            <button type="button" data-window="24h">24h</button>
+            <button type="button" data-window="7d">7d</button>
+            <button type="button" data-window="30d">30d</button>
+            <button type="button" data-window="90d">90d</button>
+          </div>
+        </section>
+
+        <section class="widget-grid maintenance-kpi-grid">
+          <article class="panel widget-card">
+            <div class="panel-header compact"><div><p class="eyebrow">Health</p><h2>Trend Score</h2></div><span id="maintenanceHealthScore">100</span></div>
+            <canvas class="sparkline" id="maintenanceHealthChart" aria-label="Health Trend"></canvas>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact"><div><p class="eyebrow">Achsen</p><h2>Achsweg</h2></div><span id="jointDistanceValue">0.0 rad</span></div>
+            <canvas class="bar-chart" id="axisWearChart" aria-label="Wear Score je Achse"></canvas>
+          </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact"><div><p class="eyebrow">Grenzbereich</p><h2>Belastung</h2></div><span id="nearLimitValue">0.0 s</span></div>
+            <div class="quality-summary">
+              <div><span>Richtungsw.</span><strong id="directionChangesValue">0</strong></div>
+              <div><span>Max. Speed</span><strong id="maintenanceMaxVelocity">0.00 rad/s</strong></div>
+              <div><span>EGM Last</span><strong id="utilizationValue">-</strong></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="grid maintenance-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div><p class="eyebrow">Predictive Maintenance</p><h2>Wear Score je Achse</h2></div>
+              <span>konservativ</span>
+            </div>
+            <div class="axis-wear-list" id="axisWearList"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div><p class="eyebrow">Timeline</p><h2>Ereignisse</h2></div>
+              <span id="eventCountValue">0 Events</span>
+            </div>
+            <div class="timeline" id="maintenanceTimeline"></div>
+          </article>
+        </section>
+
+        <section class="grid maintenance-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div><p class="eyebrow">Mail</p><h2>Benachrichtigungen</h2></div>
+              <span id="mailSettingsState">nicht konfiguriert</span>
+            </div>
+            <form class="mail-settings" id="mailSettingsForm">
+              <label>Empfänger
+                <input id="mailRecipients" type="text" placeholder="technik@example.com, instandhaltung@example.com" />
+              </label>
+              <label><input id="mailImmediate" type="checkbox" checked /> Kritische Alarme sofort</label>
+              <label><input id="mailDaily" type="checkbox" checked /> Tägliche Zusammenfassung</label>
+              <label><input id="mailWeekly" type="checkbox" checked /> Wöchentlicher Zustandsreport</label>
+              <div class="mail-actions">
+                <button id="saveMailSettings" type="submit">Speichern</button>
+                <button id="sendTestMail" type="button">Testmail</button>
+                <span id="testMailState">bereit</span>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div><p class="eyebrow">Mail Queue</p><h2>Ausgang</h2></div>
+              <span id="mailQueueValue">0</span>
+            </div>
+            <div class="mail-queue" id="mailQueueList"></div>
           </article>
         </section>
       </section>
@@ -209,6 +341,21 @@
             </div>
             <div class="health-list" id="healthList"></div>
           </article>
+          <article class="panel widget-card">
+            <div class="panel-header compact">
+              <div>
+                <p class="eyebrow">EGM</p>
+                <h2>Controller State</h2>
+              </div>
+              <span id="egmStateValue">-</span>
+            </div>
+            <div class="quality-grid">
+              <div><span>Motors</span><strong id="egmMotorsValue">-</strong></div>
+              <div><span>RAPID</span><strong id="egmRapidValue">-</strong></div>
+              <div><span>Convergence</span><strong id="egmConvergenceValue">-</strong></div>
+              <div><span>Utilization</span><strong id="egmUtilizationDeveloperValue">-</strong></div>
+            </div>
+          </article>
         </section>
 
         <section class="grid developer-grid">
@@ -255,6 +402,6 @@
         }
       }
     </script>
-    <script type="module" src="/assets/app.js?v=live-bridge-2"></script>
+    <script type="module" src="/assets/app.js?v=maintenance-demo-2"></script>
   </body>
 </html>

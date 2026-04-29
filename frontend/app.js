@@ -22,6 +22,7 @@ const twinStatusEl = document.getElementById("twinStatus");
 const twinJointCountEl = document.getElementById("twinJointCount");
 const twinPoseLabelEl = document.getElementById("twinPoseLabel");
 const jointPopoverEl = document.getElementById("jointPopover");
+const demoModeButtonEl = document.getElementById("demoModeButton");
 const viewTabs = [...document.querySelectorAll(".view-tab")];
 const dashboardViews = [...document.querySelectorAll("[data-dashboard-view]")];
 const jointActivityValueEl = document.getElementById("jointActivityValue");
@@ -36,7 +37,7 @@ const tcpZEl = document.getElementById("tcpZ");
 const tcpRollEl = document.getElementById("tcpRoll");
 const tcpPitchEl = document.getElementById("tcpPitch");
 const tcpYawEl = document.getElementById("tcpYaw");
-const trajectoryValueEl = document.getElementById("trajectoryValue");
+const workspaceValueEl = document.getElementById("workspaceValue");
 const qualityValueEl = document.getElementById("qualityValue");
 const latencyValueEl = document.getElementById("latencyValue");
 const jitterValueEl = document.getElementById("jitterValue");
@@ -44,6 +45,43 @@ const dataAgeValueEl = document.getElementById("dataAgeValue");
 const sampleCountValueEl = document.getElementById("sampleCountValue");
 const healthStateValueEl = document.getElementById("healthStateValue");
 const healthListEl = document.getElementById("healthList");
+const healthScoreValueEl = document.getElementById("healthScoreValue");
+const healthScoreRingEl = document.getElementById("healthScoreRing");
+const healthReasonListEl = document.getElementById("healthReasonList");
+const dataQualityLabelEl = document.getElementById("dataQualityLabel");
+const userFreshnessValueEl = document.getElementById("userFreshnessValue");
+const userSignalValueEl = document.getElementById("userSignalValue");
+const userIssueCountEl = document.getElementById("userIssueCount");
+const cycleStateValueEl = document.getElementById("cycleStateValue");
+const idleValueEl = document.getElementById("idleValue");
+const cycleValueEl = document.getElementById("cycleValue");
+const trajectoryValueEl = document.getElementById("trajectoryValue");
+const userWarningListEl = document.getElementById("userWarningList");
+const maintenanceWindowEl = document.getElementById("maintenanceWindow");
+const maintenanceHealthScoreEl = document.getElementById("maintenanceHealthScore");
+const jointDistanceValueEl = document.getElementById("jointDistanceValue");
+const nearLimitValueEl = document.getElementById("nearLimitValue");
+const directionChangesValueEl = document.getElementById("directionChangesValue");
+const maintenanceMaxVelocityEl = document.getElementById("maintenanceMaxVelocity");
+const utilizationValueEl = document.getElementById("utilizationValue");
+const axisWearListEl = document.getElementById("axisWearList");
+const maintenanceTimelineEl = document.getElementById("maintenanceTimeline");
+const eventCountValueEl = document.getElementById("eventCountValue");
+const mailSettingsFormEl = document.getElementById("mailSettingsForm");
+const mailRecipientsEl = document.getElementById("mailRecipients");
+const mailImmediateEl = document.getElementById("mailImmediate");
+const mailDailyEl = document.getElementById("mailDaily");
+const mailWeeklyEl = document.getElementById("mailWeekly");
+const mailSettingsStateEl = document.getElementById("mailSettingsState");
+const mailQueueValueEl = document.getElementById("mailQueueValue");
+const mailQueueListEl = document.getElementById("mailQueueList");
+const sendTestMailEl = document.getElementById("sendTestMail");
+const testMailStateEl = document.getElementById("testMailState");
+const egmStateValueEl = document.getElementById("egmStateValue");
+const egmMotorsValueEl = document.getElementById("egmMotorsValue");
+const egmRapidValueEl = document.getElementById("egmRapidValue");
+const egmConvergenceValueEl = document.getElementById("egmConvergenceValue");
+const egmUtilizationDeveloperValueEl = document.getElementById("egmUtilizationDeveloperValue");
 
 const charts = {
   jointActivity: createSparkline(document.getElementById("jointActivityChart"), {
@@ -69,7 +107,16 @@ const charts = {
     color: "#5cc8ff",
     accent: "#ffbd4a",
   }),
-  trajectory: createTrajectoryChart(document.getElementById("trajectoryChart")),
+  maintenanceHealth: createSparkline(document.getElementById("maintenanceHealthChart"), {
+    stroke: "#20c997",
+    fill: "rgba(32, 201, 151, 0.12)",
+    maxSamples: 48,
+  }),
+  axisWear: createBarChart(document.getElementById("axisWearChart"), {
+    color: "#20c997",
+    accent: "#ffbd4a",
+  }),
+  workspace: createWorkspaceMap(document.getElementById("workspaceMap")),
 };
 
 const state = {
@@ -91,12 +138,20 @@ const state = {
   demoStartedAt: null,
   demoSequence: 0,
   realDataReceived: false,
+  forceDemo: new URLSearchParams(window.location.search).get("demo") === "1",
   previousTcpPose: null,
-  trajectory: [],
+  currentMotionLabel: "Idle",
   latencySamples: [],
   jitterSamples: [],
   sampleCount: 0,
   healthIssues: [],
+  healthScore: 100,
+  idleStartedAt: null,
+  lastMovingAt: null,
+  trajectorySamples: 0,
+  egmState: null,
+  maintenanceWindow: "24h",
+  maintenanceTimer: null,
 };
 
 const twin = createDigitalTwin(twinCanvasEl, {
@@ -151,13 +206,37 @@ function stopDemoStream() {
   if (!state.demoTimer) return;
   clearInterval(state.demoTimer);
   state.demoTimer = null;
+  demoModeButtonEl?.classList.remove("active");
 }
 
 function setLiveMode(label = "ROS live") {
+  if (state.forceDemo) return;
   state.realDataReceived = true;
   stopDemoStream();
   rosStateEl.textContent = "online";
   setConnection(true, label);
+}
+
+function resetDemoState() {
+  state.realDataReceived = false;
+  state.lastJointReceivedAt = null;
+  state.previousJointPositions = null;
+  state.previousTcpPose = null;
+  state.jointUpdateTimes = [];
+  state.packetTimes = [];
+  state.packetCount = 0;
+  state.sampleCount = 0;
+  state.latencySamples = [];
+  state.jitterSamples = [];
+  state.trajectorySamples = 0;
+  twinCanvasEl.classList.remove("stale");
+}
+
+function enableDemoMode() {
+  state.forceDemo = true;
+  resetDemoState();
+  stopDemoStream();
+  startDemoStream(true);
 }
 
 function updateLiveRate(receivedAt) {
@@ -234,9 +313,6 @@ function updateTcpPose(data, receivedAt) {
   }
 
   state.previousTcpPose = { ...pose, receivedAt };
-  state.trajectory.push({ ...pose, receivedAt });
-  state.trajectory = state.trajectory.filter((point) => receivedAt - point.receivedAt <= 30).slice(-180);
-
   tcpXEl.textContent = `${pose.x.toFixed(3)} m`;
   tcpYEl.textContent = `${pose.y.toFixed(3)} m`;
   tcpZEl.textContent = `${pose.z.toFixed(3)} m`;
@@ -244,8 +320,10 @@ function updateTcpPose(data, receivedAt) {
   tcpPitchEl.textContent = `${radToDeg(pose.pitch).toFixed(1)} deg`;
   tcpYawEl.textContent = `${radToDeg(pose.yaw).toFixed(1)} deg`;
   tcpSpeedValueEl.textContent = `${speed.toFixed(2)} m/s`;
-  trajectoryValueEl.textContent = `${state.trajectory.length} Samples`;
-  charts.trajectory.setPoints(state.trajectory);
+  workspaceValueEl.textContent = `${Math.hypot(pose.x, pose.y).toFixed(2)} m`;
+  charts.workspace.setPose(pose);
+  state.trajectorySamples = Math.min(9999, state.trajectorySamples + 1);
+  trajectoryValueEl.textContent = `${state.trajectorySamples} Samples`;
 
   return { pose, speed };
 }
@@ -297,8 +375,20 @@ function updateHealth(data, quality, tcp) {
   if (tcp.speed > 0.65) issues.push({ level: "warn", label: "TCP schnell", value: `${tcp.speed.toFixed(2)} m/s` });
 
   state.healthIssues = issues;
+  const scorePenalty = issues.reduce((sum, issue) => sum + (issue.level === "danger" ? 45 : 14), 0);
+  state.healthScore = Math.max(0, Math.min(100, Math.round(100 - scorePenalty)));
+  const stateLabel = issues.some((item) => item.level === "danger") ? "Kritisch" : issues.length ? "Warnung" : "OK";
+
   healthStateValueEl.textContent = issues.some((item) => item.level === "danger") ? "Critical" : issues.length ? "Warn" : "OK";
+  healthScoreValueEl.textContent = String(state.healthScore);
+  healthScoreRingEl.querySelector("strong").textContent = String(state.healthScore);
+  healthScoreRingEl.querySelector("span").textContent = stateLabel;
+  healthScoreRingEl.style.setProperty("--score", `${state.healthScore}%`);
+  healthScoreRingEl.classList.toggle("warn", issues.length > 0 && !issues.some((item) => item.level === "danger"));
+  healthScoreRingEl.classList.toggle("danger", issues.some((item) => item.level === "danger"));
   healthListEl.innerHTML = "";
+  healthReasonListEl.innerHTML = "";
+  userWarningListEl.innerHTML = "";
 
   const rows = issues.length ? issues : [{ level: "ok", label: "Alle Checks stabil", value: "OK" }];
   for (const issue of rows) {
@@ -306,7 +396,195 @@ function updateHealth(data, quality, tcp) {
     row.className = `health-item ${issue.level}`;
     row.innerHTML = `<strong>${issue.label}</strong><span>${issue.value}</span>`;
     healthListEl.appendChild(row);
+
+    const reason = row.cloneNode(true);
+    healthReasonListEl.appendChild(reason);
+    const userWarning = row.cloneNode(true);
+    userWarningListEl.appendChild(userWarning);
   }
+
+  dataQualityLabelEl.textContent = quality.latency > 250 || quality.jitter > 80 ? "pruefen" : "stabil";
+  userFreshnessValueEl.textContent = `${quality.dataAgeMs.toFixed(0)} ms`;
+  userSignalValueEl.textContent = jointTopic && jointTopic.age_sec <= 2.5 ? "Live" : "kein Stream";
+  userIssueCountEl.textContent = String(issues.length);
+}
+
+function updateEgmState(data) {
+  if (data?.egm_channels?.length) {
+    const channel = data.egm_channels[0];
+    data = {
+      motor_state_label: channel.motor_state === 2 ? "on" : channel.motor_state === 3 ? "off" : "unknown",
+      mci_state_label: channel.egm_client_state === 4 ? "running" : channel.egm_client_state === 3 ? "stopped" : channel.egm_client_state === 2 ? "error" : "unknown",
+      rapid_exec_state_label: channel.rapid_execution_state === 3 ? "running" : channel.rapid_execution_state === 2 ? "stopped" : "unknown",
+      mci_convergence_met: channel.egm_convergence_met,
+      utilization_rate: channel.utilization_rate,
+    };
+  }
+  state.egmState = data || {};
+  egmStateValueEl.textContent = data?.mci_state_label || "-";
+  egmMotorsValueEl.textContent = data?.motor_state_label || "-";
+  egmRapidValueEl.textContent = data?.rapid_exec_state_label || "-";
+  egmConvergenceValueEl.textContent = data?.mci_convergence_met === true ? "met" : data?.mci_convergence_met === false ? "open" : "-";
+  const utilization = data?.utilization_rate;
+  const utilizationLabel = Number.isFinite(utilization) ? `${utilization.toFixed(1)} %` : "-";
+  egmUtilizationDeveloperValueEl.textContent = utilizationLabel;
+  utilizationValueEl.textContent = utilizationLabel;
+}
+
+function renderMaintenanceSummary(summary) {
+  if (!summary) return;
+  maintenanceHealthScoreEl.textContent = String(summary.health_score ?? 100);
+  jointDistanceValueEl.textContent = `${(summary.joint_distance_rad || 0).toFixed(1)} rad`;
+  nearLimitValueEl.textContent = `${(summary.near_limit_seconds || 0).toFixed(1)} s`;
+  directionChangesValueEl.textContent = String(summary.direction_changes || 0);
+  maintenanceMaxVelocityEl.textContent = `${(summary.max_velocity_rad_s || 0).toFixed(2)} rad/s`;
+  utilizationValueEl.textContent = Number.isFinite(summary.utilization_max) && summary.utilization_max > 0
+    ? `${summary.utilization_max.toFixed(1)} %`
+    : utilizationValueEl.textContent || "-";
+  charts.maintenanceHealth.push(summary.health_score ?? 100);
+  charts.axisWear.setValues((summary.axis || []).map((axis) => axis.wear_score || 0), { max: 100 });
+
+  axisWearListEl.innerHTML = "";
+  const axisRows = summary.axis?.length ? summary.axis : Array.from({ length: 6 }, (_, index) => ({
+    axis: index + 1,
+    wear_score: 0,
+    distance_rad: 0,
+    direction_changes: 0,
+    near_limit_seconds: 0,
+  }));
+  for (const axis of axisRows) {
+    const score = Math.round(axis.wear_score || 0);
+    const row = document.createElement("div");
+    row.className = "axis-wear-item";
+    row.innerHTML = `
+      <div>
+        <strong>Achse ${axis.axis}</strong>
+        <span>${(axis.distance_rad || 0).toFixed(1)} rad Weg &middot; ${axis.direction_changes || 0} Richtungswechsel</span>
+      </div>
+      <div class="wear-bar"><span style="width: ${Math.min(100, score)}%"></span></div>
+      <b>${score}</b>
+    `;
+    axisWearListEl.appendChild(row);
+  }
+
+  const events = summary.events || [];
+  eventCountValueEl.textContent = `${events.length} Events`;
+  maintenanceTimelineEl.innerHTML = "";
+  if (!events.length) {
+    maintenanceTimelineEl.innerHTML = '<p class="empty">Keine Ereignisse im gewaehlten Zeitraum.</p>';
+  }
+  for (const event of events) {
+    const row = document.createElement("div");
+    row.className = `timeline-item ${event.severity}`;
+    const acknowledged = event.acknowledged_at ? `<span>quittiert ${formatTime(event.acknowledged_at)}</span>` : "";
+    row.innerHTML = `
+      <div>
+        <time>${formatTime(event.created_at)}</time>
+        <strong>${event.title}</strong>
+        <p>${event.detail}</p>
+        ${acknowledged}
+      </div>
+      ${event.acknowledged_at ? "" : `<button type="button" data-ack-event="${event.id}">Quittieren</button>`}
+    `;
+    maintenanceTimelineEl.appendChild(row);
+  }
+
+  const mailQueue = summary.mail_queue || [];
+  mailQueueValueEl.textContent = String(mailQueue.length);
+  mailQueueListEl.innerHTML = "";
+  if (!mailQueue.length) {
+    mailQueueListEl.innerHTML = '<p class="empty">Keine Mail-Eintraege.</p>';
+  }
+  for (const mail of mailQueue) {
+    const row = document.createElement("div");
+    row.className = `mail-item ${mail.status}`;
+    row.innerHTML = `<strong>${mail.subject}</strong><span>${mail.status} · ${formatTime(mail.created_at)}</span>`;
+    mailQueueListEl.appendChild(row);
+  }
+
+  const settings = summary.notification_settings || {};
+  mailRecipientsEl.value = settings.recipients || "";
+  mailImmediateEl.checked = settings.immediate_critical !== false;
+  mailDailyEl.checked = settings.daily_summary !== false;
+  mailWeeklyEl.checked = settings.weekly_report !== false;
+  mailSettingsStateEl.textContent = settings.smtp_configured
+    ? (settings.recipients ? "aktiv" : "Empfaenger fehlen")
+    : "SMTP fehlt";
+}
+
+async function refreshMaintenanceSummary() {
+  try {
+    const response = await fetch(`/api/history/summary?window=${encodeURIComponent(state.maintenanceWindow)}`);
+    if (!response.ok) return;
+    renderMaintenanceSummary(await response.json());
+  } catch {
+    // The dashboard still works in demo/offline mode without the history API.
+  }
+}
+
+async function saveMailSettings(event) {
+  event.preventDefault();
+  await persistMailSettings();
+}
+
+async function persistMailSettings() {
+  const body = {
+    recipients: mailRecipientsEl.value,
+    immediate_critical: mailImmediateEl.checked,
+    daily_summary: mailDailyEl.checked,
+    weekly_report: mailWeeklyEl.checked,
+  };
+  try {
+    const response = await fetch("/api/settings/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      renderMaintenanceSummary({ notification_settings: await response.json(), axis: [], events: [], mail_queue: [] });
+      await refreshMaintenanceSummary();
+    }
+  } catch {
+    mailSettingsStateEl.textContent = "Fehler";
+  }
+}
+
+async function sendTestMail() {
+  testMailStateEl.textContent = "sendet...";
+  await persistMailSettings();
+  try {
+    const response = await fetch("/api/mail/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipients: mailRecipientsEl.value }),
+    });
+    if (!response.ok) {
+      testMailStateEl.textContent = "Fehler";
+      return;
+    }
+    const result = await response.json();
+    testMailStateEl.textContent = result.status === "sent"
+      ? "gesendet"
+      : result.status === "needs_recipients"
+        ? "Empfaenger fehlt"
+        : result.status === "smtp_missing"
+          ? "SMTP fehlt"
+        : result.error
+          ? "SMTP Fehler"
+          : result.status;
+    await refreshMaintenanceSummary();
+  } catch {
+    testMailStateEl.textContent = "Fehler";
+  }
+}
+
+async function acknowledgeEvent(eventId) {
+  await fetch(`/api/events/${eventId}/ack`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ acknowledged_by: "dashboard", comment: "" }),
+  });
+  await refreshMaintenanceSummary();
 }
 
 function updateShowcaseStatus(data, receivedAt) {
@@ -328,8 +606,21 @@ function updateShowcaseStatus(data, receivedAt) {
   readyStateEl.textContent = hasFreshJointState && hasPositions ? "Ready" : "Waiting";
   setCardState(readyCardEl, hasFreshJointState && hasPositions ? "ok" : "warn");
 
-  motionStateEl.textContent = moving ? "Moving" : "Idle";
+  motionStateEl.textContent = moving ? "Bewegt" : "Steht";
   setCardState(motionCardEl, moving ? "ok" : "warn");
+  state.currentMotionLabel = moving ? "In Bewegung" : "Steht";
+  if (moving) {
+    state.lastMovingAt = receivedAt;
+    state.idleStartedAt = null;
+    cycleStateValueEl.textContent = "aktiv";
+    cycleValueEl.textContent = "Bewegung";
+  } else {
+    state.idleStartedAt ??= receivedAt;
+    const idleSeconds = Math.max(0, receivedAt - state.idleStartedAt);
+    idleValueEl.textContent = `${idleSeconds.toFixed(1)} s`;
+    cycleStateValueEl.textContent = idleSeconds > 3 ? "wartet" : "bereit";
+    cycleValueEl.textContent = state.lastMovingAt ? `letzte Bewegung ${formatAge(receivedAt - state.lastMovingAt)}` : "-";
+  }
 
   updateLiveRate(receivedAt);
   state.previousJointPositions = [...(data.positions || [])];
@@ -445,17 +736,24 @@ function updateTopics(statusTopics = []) {
   if (!jointTopic || jointTopic.age_sec > 2.5) {
     readyStateEl.textContent = "Waiting";
     setCardState(readyCardEl, "warn");
+    userSignalValueEl.textContent = "kein Stream";
+    dataQualityLabelEl.textContent = "unterbrochen";
     if (jointTopic?.age_sec > 4) {
-      motionStateEl.textContent = "Idle";
+      motionStateEl.textContent = "Kein Live-Datenstrom";
       setCardState(motionCardEl, "warn");
+      state.currentMotionLabel = "Steht";
+      twinStatusEl.textContent = "letzte Pose";
+      twinCanvasEl.classList.add("stale");
     }
+  } else {
+    twinCanvasEl.classList.remove("stale");
   }
 
-  topicListEl.innerHTML = "";
+  if (topicListEl) topicListEl.innerHTML = "";
   developerTopicListEl.innerHTML = "";
 
   if (allNames.size === 0) {
-    topicListEl.innerHTML = '<p class="empty">Noch keine Topics empfangen.</p>';
+    if (topicListEl) topicListEl.innerHTML = '<p class="empty">Noch keine Topics empfangen.</p>';
     developerTopicListEl.innerHTML = '<p class="empty">Noch keine Topics empfangen.</p>';
     return;
   }
@@ -469,7 +767,7 @@ function updateTopics(statusTopics = []) {
       <strong>${configured?.label || name}</strong>
       <span>${topic ? formatAge(topic.age_sec) : "wartet"}</span>
     `;
-    topicListEl.appendChild(row);
+    if (topicListEl) topicListEl.appendChild(row);
 
     const developerRow = document.createElement("div");
     developerRow.className = "topic-item";
@@ -626,6 +924,8 @@ function handleMessage(payload) {
 
   if (payload.type === "sensor_msgs/msg/JointState") {
     updateJointStates({ ...payload.data, received_at: payload.received_at });
+  } else if (payload.topic === "/egm/state" || payload.type === "abb_egm_msgs/msg/EGMState") {
+    updateEgmState(payload.data);
   }
 }
 
@@ -683,6 +983,7 @@ function demoStatusPayload(now) {
     "/joint_states": 0.05 + Math.abs(Math.sin(now * 1.7)) * 0.08,
     "/tf": 0.18 + Math.abs(Math.sin(now * 0.9)) * 0.2,
     "/diagnostics": 0.42 + Math.abs(Math.sin(now * 0.35)) * 0.7,
+    "/egm/state": 0.08 + Math.abs(Math.sin(now * 0.8)) * 0.12,
   };
 
   return {
@@ -698,21 +999,23 @@ function demoStatusPayload(now) {
   };
 }
 
-function startDemoStream() {
-  if (state.demoTimer || state.realDataReceived) return;
+function startDemoStream(force = false) {
+  if (state.demoTimer || (state.realDataReceived && !force)) return;
 
   state.demoStartedAt = Date.now() / 1000;
   state.configuredTopics = [
     { name: "/joint_states", type: "sensor_msgs/msg/JointState", label: "Joint States" },
     { name: "/tf", type: "tf2_msgs/msg/TFMessage", label: "TF" },
     { name: "/diagnostics", type: "diagnostic_msgs/msg/DiagnosticArray", label: "Diagnostics" },
+    { name: "/egm/state", type: "abb/egm/RobotState", label: "EGM State" },
   ];
   rosStateEl.textContent = "demo";
   setConnection(true, "Demo Daten");
+  demoModeButtonEl?.classList.add("active");
   updateTopics();
 
   const tick = () => {
-    if (state.realDataReceived) {
+    if (state.realDataReceived && !state.forceDemo) {
       stopDemoStream();
       return;
     }
@@ -720,6 +1023,21 @@ function startDemoStream() {
     state.demoSequence += 1;
     handleMessage(demoStatusPayload(now));
     handleMessage(demoJointPayload(now));
+    handleMessage({
+      demo: true,
+      kind: "topic",
+      topic: "/egm/state",
+      type: "abb/egm/RobotState",
+      label: "EGM State",
+      received_at: now,
+      data: {
+        motor_state_label: "on",
+        mci_state_label: "running",
+        rapid_exec_state_label: "running",
+        mci_convergence_met: true,
+        utilization_rate: 42 + Math.sin(now * 0.4) * 8,
+      },
+    });
 
     if (state.demoSequence % 4 === 0) {
       handleMessage({
@@ -768,6 +1086,7 @@ function connect() {
   });
 
   socket.addEventListener("message", (event) => {
+    if (state.forceDemo) return;
     handleMessage(JSON.parse(event.data));
   });
 
@@ -787,21 +1106,42 @@ function connect() {
 }
 
 jointListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
-topicListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
+if (topicListEl) topicListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
 developerJointListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
 developerTopicListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
 twin.setJoints(state.jointPositions);
 charts.jointPositions.setValues(state.jointPositions);
 Object.values(charts).forEach((chart) => chart.draw());
 connect();
+refreshMaintenanceSummary();
+state.maintenanceTimer = setInterval(refreshMaintenanceSummary, 15000);
 window.setTimeout(() => {
-  if (!state.realDataReceived && !state.lastJointReceivedAt) {
-    startDemoStream();
+  if (state.forceDemo || (!state.realDataReceived && !state.lastJointReceivedAt)) {
+    startDemoStream(state.forceDemo);
   }
 }, 1200);
 
 viewTabs.forEach((tab) => {
   tab.addEventListener("click", () => switchDashboard(tab.dataset.view));
+});
+
+demoModeButtonEl?.addEventListener("click", enableDemoMode);
+
+maintenanceWindowEl?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-window]");
+  if (!button) return;
+  state.maintenanceWindow = button.dataset.window;
+  maintenanceWindowEl.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
+  refreshMaintenanceSummary();
+});
+
+mailSettingsFormEl?.addEventListener("submit", saveMailSettings);
+sendTestMailEl?.addEventListener("click", sendTestMail);
+
+maintenanceTimelineEl?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-ack-event]");
+  if (!button) return;
+  acknowledgeEvent(button.dataset.ackEvent);
 });
 
 document.addEventListener("click", (event) => {
@@ -935,63 +1275,169 @@ function createBarChart(canvas, options = {}) {
   };
 }
 
-function createTrajectoryChart(canvas) {
-  let points = [];
+function createWorkspaceMap(canvas) {
+  if (!canvas) return { setPose() {}, draw() {} };
 
-  function draw() {
-    if (!canvas) return;
-    const { ctx, width, height } = prepareCanvas(canvas);
-    ctx.clearRect(0, 0, width, height);
-    drawGrid(ctx, width, height);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    const left = 16;
-    const right = width - 16;
-    const top = 14;
-    const bottom = height - 18;
-    const plotWidth = right - left;
-    const plotHeight = bottom - top;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(44, 1, 0.05, 10);
+  const target = new THREE.Vector3(0, 0.42, 0);
+  const cameraState = { yaw: -0.72, pitch: 0.48, radius: 2.45 };
+  const trail = [];
 
-    if (points.length < 2) {
-      ctx.fillStyle = "rgba(157, 166, 178, 0.55)";
-      ctx.font = "12px Inter, sans-serif";
-      ctx.fillText("Warte auf TCP Samples", left, top + 18);
-      return;
+  scene.add(new THREE.HemisphereLight(0xe8f3ff, 0x101217, 2.1));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+  keyLight.position.set(2, 3, 2);
+  scene.add(keyLight);
+
+  const grid = new THREE.GridHelper(2.4, 12, 0x334050, 0x27313d);
+  grid.position.y = 0;
+  scene.add(grid);
+
+  const ringMaterial = new THREE.LineBasicMaterial({ color: 0x3a4350, transparent: true, opacity: 0.7 });
+  for (const radius of [0.35, 0.7, 1.05]) {
+    const points = [];
+    for (let index = 0; index <= 96; index += 1) {
+      const angle = (index / 96) * Math.PI * 2;
+      points.push(new THREE.Vector3(Math.cos(angle) * radius, 0.006, Math.sin(angle) * radius));
     }
-
-    const xs = points.map((point) => point.x);
-    const ys = points.map((point) => point.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const spanX = Math.max(0.001, maxX - minX);
-    const spanY = Math.max(0.001, maxY - minY);
-
-    ctx.beginPath();
-    points.forEach((point, index) => {
-      const x = left + ((point.x - minX) / spanX) * plotWidth;
-      const y = bottom - ((point.y - minY) / spanY) * plotHeight;
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = "#20c997";
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.stroke();
-
-    const latest = points.at(-1);
-    const x = left + ((latest.x - minX) / spanX) * plotWidth;
-    const y = bottom - ((latest.y - minY) / spanY) * plotHeight;
-    ctx.fillStyle = "#ff2a2a";
-    ctx.beginPath();
-    ctx.arc(x, y, 4, 0, Math.PI * 2);
-    ctx.fill();
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), ringMaterial));
   }
 
+  const axisMaterial = new THREE.LineBasicMaterial({ color: 0x5cc8ff, transparent: true, opacity: 0.58 });
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-1.1, 0.012, 0),
+    new THREE.Vector3(1.1, 0.012, 0),
+  ]), axisMaterial));
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0.012, -1.1),
+    new THREE.Vector3(0, 0.012, 1.1),
+  ]), axisMaterial));
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.055, 0.035, 32),
+    new THREE.MeshStandardMaterial({ color: 0x5cc8ff, emissive: 0x092a36, roughness: 0.46 }),
+  );
+  base.position.y = 0.018;
+  scene.add(base);
+
+  const tcpMarker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.045, 28, 16),
+    new THREE.MeshStandardMaterial({ color: 0x20c997, emissive: 0x063a2d, roughness: 0.38 }),
+  );
+  tcpMarker.visible = false;
+  scene.add(tcpMarker);
+
+  const trajectoryLine = new THREE.Line(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0x20c997, transparent: true, opacity: 0.86 }),
+  );
+  scene.add(trajectoryLine);
+
+  const heightLine = new THREE.Line(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0x9da6b2, transparent: true, opacity: 0.54 }),
+  );
+  heightLine.visible = false;
+  scene.add(heightLine);
+
+  const headingLine = new THREE.Line(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0xffbd4a, transparent: true, opacity: 0.95 }),
+  );
+  headingLine.visible = false;
+  scene.add(headingLine);
+
+  function poseToVector(nextPose) {
+    return new THREE.Vector3(nextPose.x, Math.max(0.02, nextPose.z), -nextPose.y);
+  }
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width));
+    const height = Math.max(1, Math.floor(rect.height));
+    if (canvas.width !== width || canvas.height !== height) {
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  function updateCamera() {
+    const x = Math.sin(cameraState.yaw) * Math.cos(cameraState.pitch) * cameraState.radius;
+    const y = target.y + Math.sin(cameraState.pitch) * cameraState.radius;
+    const z = Math.cos(cameraState.yaw) * Math.cos(cameraState.pitch) * cameraState.radius;
+    camera.position.set(x, y, z);
+    camera.lookAt(target);
+  }
+
+  function draw() {
+    resize();
+    updateCamera();
+    renderer.render(scene, camera);
+  }
+
+  let dragging = false;
+  let lastPointer = { x: 0, y: 0 };
+
+  canvas.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    lastPointer = { x: event.clientX, y: event.clientY };
+    canvas.setPointerCapture(event.pointerId);
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const dx = event.clientX - lastPointer.x;
+    const dy = event.clientY - lastPointer.y;
+    lastPointer = { x: event.clientX, y: event.clientY };
+    cameraState.yaw -= dx * 0.008;
+    cameraState.pitch = Math.max(0.08, Math.min(1.22, cameraState.pitch + dy * 0.006));
+    draw();
+  });
+
+  canvas.addEventListener("pointerup", (event) => {
+    dragging = false;
+    canvas.releasePointerCapture(event.pointerId);
+  });
+
+  canvas.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      cameraState.radius = Math.max(1.35, Math.min(4.2, cameraState.radius + event.deltaY * 0.0018));
+      draw();
+    },
+    { passive: false },
+  );
+
   return {
-    setPoints(nextPoints) {
-      points = nextPoints || [];
+    setPose(nextPose) {
+      if (!Number.isFinite(nextPose.x) || !Number.isFinite(nextPose.y) || !Number.isFinite(nextPose.z)) return;
+      const current = poseToVector(nextPose);
+      trail.push(current.clone());
+      while (trail.length > 180) trail.shift();
+
+      tcpMarker.visible = true;
+      heightLine.visible = true;
+      headingLine.visible = true;
+      tcpMarker.position.copy(current);
+      trajectoryLine.geometry.dispose();
+      trajectoryLine.geometry = new THREE.BufferGeometry().setFromPoints(trail);
+      heightLine.geometry.dispose();
+      heightLine.geometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(current.x, 0.018, current.z),
+        current,
+      ]);
+
+      const yaw = Number.isFinite(nextPose.yaw) ? nextPose.yaw : 0;
+      const heading = new THREE.Vector3(Math.cos(yaw) * 0.18, 0, -Math.sin(yaw) * 0.18);
+      headingLine.geometry.dispose();
+      headingLine.geometry = new THREE.BufferGeometry().setFromPoints([current, current.clone().add(heading)]);
       draw();
     },
     draw,

@@ -3,6 +3,8 @@
 __pycache__
 *.pyc
 .codex
+.env
+data
 node_modules
 test-results
 playwright-report
