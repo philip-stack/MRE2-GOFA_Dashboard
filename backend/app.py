@@ -2,6 +2,7 @@ import asyncio
 import json
 import math
 import os
+import re
 import smtplib
 import socket
 import sqlite3
@@ -23,9 +24,19 @@ from fastapi.staticfiles import StaticFiles
 from rclpy.executors import ExternalShutdownException
 from geometry_msgs.msg import PoseStamped, Twist
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Float32, Float64, Int32, String
 from tf2_msgs.msg import TFMessage
+from rosidl_runtime_py.convert import message_to_ordereddict
+from rosidl_runtime_py.utilities import get_message
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # PostgreSQL support is optional for local tooling.
+    psycopg = None
+    dict_row = None
 
 try:
     from abb_egm_msgs.msg import EGMState
@@ -54,10 +65,20 @@ MESSAGE_TYPES = {
     "std_msgs/msg/Int32": Int32,
 }
 
+DYNAMIC_MESSAGE_TYPES: dict[str, Any] = {}
+
 if EGMState is not None:
     MESSAGE_TYPES["abb_egm_msgs/msg/EGMState"] = EGMState
 if SystemState is not None:
     MESSAGE_TYPES["abb_robot_msgs/msg/SystemState"] = SystemState
+
+
+def resolve_message_class(msg_type: str) -> Any:
+    if msg_type in MESSAGE_TYPES:
+        return MESSAGE_TYPES[msg_type]
+    if msg_type not in DYNAMIC_MESSAGE_TYPES:
+        DYNAMIC_MESSAGE_TYPES[msg_type] = get_message(msg_type)
+    return DYNAMIC_MESSAGE_TYPES[msg_type]
 
 
 @dataclass(frozen=True)
@@ -97,9 +118,14 @@ def read_topics() -> list[TopicConfig]:
 
     topics: list[TopicConfig] = []
     for item in parsed:
-        if item.get("type") not in MESSAGE_TYPES:
+        try:
+            resolve_message_class(item.get("type"))
+        except (AttributeError, ModuleNotFoundError, TypeError, ValueError) as exc:
             supported = ", ".join(sorted(MESSAGE_TYPES))
-            raise RuntimeError(f"Nicht unterstuetzter ROS2 Message-Type: {item.get('type')}. Unterstuetzt: {supported}")
+            raise RuntimeError(
+                f"Nicht importierbarer ROS2 Message-Type: {item.get('type')}. "
+                f"Explizit unterstuetzt: {supported}"
+            ) from exc
         topics.append(
             TopicConfig(
                 name=item["name"],
@@ -110,11 +136,22 @@ def read_topics() -> list[TopicConfig]:
     return topics
 
 
+def display_joint_names(names: list[str]) -> list[str]:
+    result = []
+    for index, name in enumerate(names):
+        match = re.search(r"(?:joint[_\s-]*)(\d+)$", str(name), re.IGNORECASE)
+        number = int(match.group(1)) if match else index + 1
+        result.append(f"Joint {number}")
+    return result
+
+
 def serialize_message(message: Any, msg_type: str) -> dict[str, Any]:
     if msg_type == "sensor_msgs/msg/JointState":
+        raw_names = list(message.name)
         return {
             "header_stamp": ros_time_to_float(message.header.stamp),
-            "names": list(message.name),
+            "names": display_joint_names(raw_names),
+            "raw_names": raw_names,
             "positions": list(message.position),
             "velocities": list(message.velocity),
             "efforts": list(message.effort),
@@ -227,7 +264,7 @@ def serialize_message(message: Any, msg_type: str) -> dict[str, Any]:
     if hasattr(message, "data"):
         return {"data": message.data}
 
-    return {"repr": repr(message)}
+    return dict(message_to_ordereddict(message))
 
 
 def _read_varint(buffer: bytes, index: int) -> tuple[int, int]:
@@ -464,6 +501,8 @@ class DashboardPersistence:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = self.data_dir / "sman_dashboard.sqlite3"
+        self.database_url = os.getenv("SMAN_DATABASE_URL", "").strip()
+        self.driver = "postgres" if self.database_url else "sqlite"
         self._lock = threading.Lock()
         self._last_positions: list[float] | None = None
         self._last_velocity_signs: list[int] | None = None
@@ -471,15 +510,120 @@ class DashboardPersistence:
         self._last_event_times: dict[str, float] = {}
         self._init_db()
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self) -> Any:
+        if self.driver == "postgres":
+            if psycopg is None or dict_row is None:
+                raise RuntimeError("psycopg ist nicht installiert, SMAN_DATABASE_URL kann nicht genutzt werden.")
+            return psycopg.connect(self.database_url, row_factory=dict_row)
         connection = sqlite3.connect(self.db_path, timeout=10)
         connection.row_factory = sqlite3.Row
         return connection
 
+    def _sql(self, statement: str) -> str:
+        if self.driver == "postgres":
+            return statement.replace("?", "%s")
+        return statement
+
+    def _greatest(self, left: str, right: str) -> str:
+        return f"GREATEST({left}, {right})" if self.driver == "postgres" else f"MAX({left}, {right})"
+
+    def _window_seconds(self, window: str) -> int:
+        seconds_by_window = {
+            "live": 0,
+            "1h": 3600,
+            "24h": 86400,
+            "7d": 7 * 86400,
+            "30d": 30 * 86400,
+            "90d": 90 * 86400,
+        }
+        return seconds_by_window.get(window, 86400)
+
+    def _series_step(self, seconds: int) -> int:
+        if seconds <= 3600:
+            return 60
+        if seconds <= 86400:
+            return 900
+        if seconds <= 7 * 86400:
+            return 3600
+        return 86400
+
     def _init_db(self) -> None:
         with self._connect() as db:
-            db.executescript(
-                """
+            if self.driver == "postgres":
+                statements = [
+                    """
+                    CREATE TABLE IF NOT EXISTS telemetry_agg (
+                        bucket BIGINT PRIMARY KEY,
+                        samples INTEGER NOT NULL DEFAULT 0,
+                        joint_distance DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        max_velocity DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        avg_velocity_sum DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        direction_changes INTEGER NOT NULL DEFAULT 0,
+                        near_limit_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        utilization_max DOUBLE PRECISION,
+                        latency_sum_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        jitter_sum_ms DOUBLE PRECISION NOT NULL DEFAULT 0
+                    )
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS axis_agg (
+                        bucket BIGINT NOT NULL,
+                        axis INTEGER NOT NULL,
+                        distance DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        direction_changes INTEGER NOT NULL DEFAULT 0,
+                        near_limit_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        max_velocity DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        PRIMARY KEY (bucket, axis)
+                    )
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS joint_position_agg (
+                        bucket BIGINT NOT NULL,
+                        axis INTEGER NOT NULL,
+                        samples INTEGER NOT NULL DEFAULT 0,
+                        position_sum DOUBLE PRECISION NOT NULL DEFAULT 0,
+                        PRIMARY KEY (bucket, axis)
+                    )
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS events (
+                        id BIGSERIAL PRIMARY KEY,
+                        created_at DOUBLE PRECISION NOT NULL,
+                        severity TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        detail TEXT NOT NULL,
+                        payload TEXT NOT NULL DEFAULT '{}',
+                        acknowledged_at DOUBLE PRECISION,
+                        acknowledged_by TEXT,
+                        comment TEXT
+                    )
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS mail_queue (
+                        id BIGSERIAL PRIMARY KEY,
+                        created_at DOUBLE PRECISION NOT NULL,
+                        status TEXT NOT NULL,
+                        severity TEXT NOT NULL,
+                        subject TEXT NOT NULL,
+                        body TEXT NOT NULL,
+                        recipients TEXT NOT NULL,
+                        sent_at DOUBLE PRECISION,
+                        error TEXT
+                    )
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )
+                    """,
+                ]
+                for statement in statements:
+                    db.execute(statement)
+            else:
+                db.executescript(
+                    """
                 CREATE TABLE IF NOT EXISTS telemetry_agg (
                     bucket INTEGER PRIMARY KEY,
                     samples INTEGER NOT NULL DEFAULT 0,
@@ -500,6 +644,14 @@ class DashboardPersistence:
                     direction_changes INTEGER NOT NULL DEFAULT 0,
                     near_limit_seconds REAL NOT NULL DEFAULT 0,
                     max_velocity REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY (bucket, axis)
+                );
+
+                CREATE TABLE IF NOT EXISTS joint_position_agg (
+                    bucket INTEGER NOT NULL,
+                    axis INTEGER NOT NULL,
+                    samples INTEGER NOT NULL DEFAULT 0,
+                    position_sum REAL NOT NULL DEFAULT 0,
                     PRIMARY KEY (bucket, axis)
                 );
 
@@ -533,17 +685,20 @@ class DashboardPersistence:
                     value TEXT NOT NULL
                 );
                 """
-            )
+                )
             self._seed_setting(db, "mail_recipients", os.getenv("SMAN_MAIL_RECIPIENTS", ""))
             self._seed_setting(db, "mail_immediate_critical", "1")
             self._seed_setting(db, "mail_daily_summary", "1")
             self._seed_setting(db, "mail_weekly_report", "1")
 
-    def _seed_setting(self, db: sqlite3.Connection, key: str, value: str) -> None:
-        db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
+    def _seed_setting(self, db: Any, key: str, value: str) -> None:
+        if self.driver == "postgres":
+            db.execute("INSERT INTO settings(key, value) VALUES (%s, %s) ON CONFLICT(key) DO NOTHING", (key, value))
+        else:
+            db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (key, value))
 
-    def _setting(self, db: sqlite3.Connection, key: str, default: str = "") -> str:
-        row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    def _setting(self, db: Any, key: str, default: str = "") -> str:
+        row = db.execute(self._sql("SELECT value FROM settings WHERE key = ?"), (key,)).fetchone()
         return str(row["value"]) if row else default
 
     def record_payload(self, payload: dict[str, Any]) -> None:
@@ -602,34 +757,50 @@ class DashboardPersistence:
         joint_distance = sum(deltas)
         with self._connect() as db:
             db.execute(
-                """
+                self._sql(
+                    f"""
                 INSERT INTO telemetry_agg(bucket, samples, joint_distance, max_velocity, avg_velocity_sum,
                     direction_changes, near_limit_seconds, latency_sum_ms)
                 VALUES (?, 1, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(bucket) DO UPDATE SET
-                    samples = samples + 1,
-                    joint_distance = joint_distance + excluded.joint_distance,
-                    max_velocity = MAX(max_velocity, excluded.max_velocity),
-                    avg_velocity_sum = avg_velocity_sum + excluded.avg_velocity_sum,
-                    direction_changes = direction_changes + excluded.direction_changes,
-                    near_limit_seconds = near_limit_seconds + excluded.near_limit_seconds,
-                    latency_sum_ms = latency_sum_ms + excluded.latency_sum_ms
-                """,
+                    samples = telemetry_agg.samples + 1,
+                    joint_distance = telemetry_agg.joint_distance + excluded.joint_distance,
+                    max_velocity = {self._greatest("telemetry_agg.max_velocity", "excluded.max_velocity")},
+                    avg_velocity_sum = telemetry_agg.avg_velocity_sum + excluded.avg_velocity_sum,
+                    direction_changes = telemetry_agg.direction_changes + excluded.direction_changes,
+                    near_limit_seconds = telemetry_agg.near_limit_seconds + excluded.near_limit_seconds,
+                    latency_sum_ms = telemetry_agg.latency_sum_ms + excluded.latency_sum_ms
+                    """
+                ),
                 (bucket, joint_distance, max_velocity, avg_velocity, direction_changes, near_limit_seconds, latency_ms),
             )
             for index, delta in enumerate(deltas[:6]):
                 axis_velocity = abs(velocities[index]) if index < len(velocities) else 0.0
                 db.execute(
-                    """
+                    self._sql(
+                        f"""
                     INSERT INTO axis_agg(bucket, axis, distance, direction_changes, near_limit_seconds, max_velocity)
                     VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(bucket, axis) DO UPDATE SET
-                        distance = distance + excluded.distance,
-                        direction_changes = direction_changes + excluded.direction_changes,
-                        near_limit_seconds = near_limit_seconds + excluded.near_limit_seconds,
-                        max_velocity = MAX(max_velocity, excluded.max_velocity)
-                    """,
+                        distance = axis_agg.distance + excluded.distance,
+                        direction_changes = axis_agg.direction_changes + excluded.direction_changes,
+                        near_limit_seconds = axis_agg.near_limit_seconds + excluded.near_limit_seconds,
+                        max_velocity = {self._greatest("axis_agg.max_velocity", "excluded.max_velocity")}
+                    """
+                    ),
                     (bucket, index + 1, delta, axis_direction_changes[index] if index < len(axis_direction_changes) else 0, axis_near_limit[index], axis_velocity),
+                )
+                db.execute(
+                    self._sql(
+                        """
+                    INSERT INTO joint_position_agg(bucket, axis, samples, position_sum)
+                    VALUES (?, ?, 1, ?)
+                    ON CONFLICT(bucket, axis) DO UPDATE SET
+                        samples = joint_position_agg.samples + 1,
+                        position_sum = joint_position_agg.position_sum + excluded.position_sum
+                    """
+                    ),
+                    (bucket, index + 1, positions[index]),
                 )
 
         if max_velocity > 1.6:
@@ -654,12 +825,14 @@ class DashboardPersistence:
             bucket = int(float(payload.get("received_at", time.time())))
             with self._connect() as db:
                 db.execute(
-                    """
+                    self._sql(
+                        f"""
                     INSERT INTO telemetry_agg(bucket, samples, utilization_max)
                     VALUES (?, 0, ?)
                     ON CONFLICT(bucket) DO UPDATE SET
-                        utilization_max = MAX(COALESCE(utilization_max, 0), excluded.utilization_max)
-                    """,
+                        utilization_max = {self._greatest("COALESCE(telemetry_agg.utilization_max, 0)", "excluded.utilization_max")}
+                    """
+                    ),
                     (bucket, float(utilization)),
                 )
             if utilization > 100:
@@ -703,17 +876,30 @@ class DashboardPersistence:
 
         payload_json = json.dumps(payload or {}, separators=(",", ":"))
         with self._connect() as db:
-            cursor = db.execute(
-                "INSERT INTO events(created_at, severity, type, title, detail, payload) VALUES (?, ?, ?, ?, ?, ?)",
-                (now, severity, event_type, title, detail, payload_json),
-            )
-            event_id = cursor.lastrowid
+            if self.driver == "postgres":
+                cursor = db.execute(
+                    "INSERT INTO events(created_at, severity, type, title, detail, payload) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+                    (now, severity, event_type, title, detail, payload_json),
+                )
+                event_id = int(cursor.fetchone()["id"])
+            else:
+                cursor = db.execute(
+                    "INSERT INTO events(created_at, severity, type, title, detail, payload) VALUES (?, ?, ?, ?, ?, ?)",
+                    (now, severity, event_type, title, detail, payload_json),
+                )
+                event_id = int(cursor.lastrowid)
             if severity == "critical" and self._setting(db, "mail_immediate_critical", "1") == "1":
                 self._queue_mail(db, f"SMAN Alarm: {title}", f"{title}\n\n{detail}\n\nEvent #{event_id}", severity)
 
-    def _queue_mail(self, db: sqlite3.Connection, subject: str, body: str, severity: str, recipients_override: str | None = None) -> int:
+    def _queue_mail(self, db: Any, subject: str, body: str, severity: str, recipients_override: str | None = None) -> int:
         recipients = recipients_override if recipients_override is not None else self._setting(db, "mail_recipients", "")
         status = "queued" if recipients.strip() else "needs_recipients"
+        if self.driver == "postgres":
+            cursor = db.execute(
+                "INSERT INTO mail_queue(created_at, status, severity, subject, body, recipients) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+                (time.time(), status, severity, subject, body, recipients),
+            )
+            return int(cursor.fetchone()["id"])
         cursor = db.execute(
             "INSERT INTO mail_queue(created_at, status, severity, subject, body, recipients) VALUES (?, ?, ?, ?, ?, ?)",
             (time.time(), status, severity, subject, body, recipients),
@@ -730,12 +916,12 @@ class DashboardPersistence:
                 "info",
                 recipients_override=target,
             )
-            status = db.execute("SELECT status FROM mail_queue WHERE id = ?", (mail_id,)).fetchone()["status"]
+            status = db.execute(self._sql("SELECT status FROM mail_queue WHERE id = ?"), (mail_id,)).fetchone()["status"]
             if status == "queued" and not os.getenv("SMAN_SMTP_HOST"):
-                db.execute("UPDATE mail_queue SET status = ?, error = ? WHERE id = ?", ("smtp_missing", "SMAN_SMTP_HOST is not configured", mail_id))
+                db.execute(self._sql("UPDATE mail_queue SET status = ?, error = ? WHERE id = ?"), ("smtp_missing", "SMAN_SMTP_HOST is not configured", mail_id))
         self.send_pending_mail()
         with self._connect() as db:
-            row = db.execute("SELECT status, error FROM mail_queue WHERE id = ?", (mail_id,)).fetchone()
+            row = db.execute(self._sql("SELECT status, error FROM mail_queue WHERE id = ?"), (mail_id,)).fetchone()
         return {"status": row["status"], "mail_id": mail_id, "error": row["error"]}
 
     def notification_settings(self) -> dict[str, Any]:
@@ -758,7 +944,7 @@ class DashboardPersistence:
         with self._connect() as db:
             for key, value in updates.items():
                 db.execute(
-                    "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    self._sql("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
                     (key, value),
                 )
         return self.notification_settings()
@@ -766,28 +952,24 @@ class DashboardPersistence:
     def acknowledge_event(self, event_id: int, acknowledged_by: str = "dashboard", comment: str = "") -> dict[str, str]:
         with self._connect() as db:
             db.execute(
-                """
+                self._sql(
+                    """
                 UPDATE events
                 SET acknowledged_at = COALESCE(acknowledged_at, ?), acknowledged_by = ?, comment = ?
                 WHERE id = ?
-                """,
+                """
+                ),
                 (time.time(), acknowledged_by, comment, event_id),
             )
         return {"status": "ok"}
 
     def summary(self, window: str = "24h") -> dict[str, Any]:
-        seconds_by_window = {
-            "1h": 3600,
-            "24h": 86400,
-            "7d": 7 * 86400,
-            "30d": 30 * 86400,
-            "90d": 90 * 86400,
-        }
-        seconds = seconds_by_window.get(window, 86400)
+        seconds = self._window_seconds(window) or 86400
         since = int(time.time() - seconds)
         with self._connect() as db:
             row = db.execute(
-                """
+                self._sql(
+                    """
                 SELECT
                     COALESCE(SUM(samples), 0) AS samples,
                     COALESCE(SUM(joint_distance), 0) AS joint_distance,
@@ -799,11 +981,13 @@ class DashboardPersistence:
                     COALESCE(SUM(latency_sum_ms), 0) AS latency_sum_ms
                 FROM telemetry_agg
                 WHERE bucket >= ?
-                """,
+                """
+                ),
                 (since,),
             ).fetchone()
             axis_rows = db.execute(
-                """
+                self._sql(
+                    """
                 SELECT axis, COALESCE(SUM(distance), 0) AS distance,
                     COALESCE(SUM(direction_changes), 0) AS direction_changes,
                     COALESCE(SUM(near_limit_seconds), 0) AS near_limit_seconds,
@@ -812,17 +996,20 @@ class DashboardPersistence:
                 WHERE bucket >= ?
                 GROUP BY axis
                 ORDER BY axis
-                """,
+                """
+                ),
                 (since,),
             ).fetchall()
             events = db.execute(
-                """
+                self._sql(
+                    """
                 SELECT id, created_at, severity, type, title, detail, acknowledged_at, acknowledged_by, comment
                 FROM events
                 WHERE created_at >= ?
                 ORDER BY created_at DESC
                 LIMIT 50
-                """,
+                """
+                ),
                 (time.time() - max(seconds, 86400),),
             ).fetchall()
             mail_rows = db.execute(
@@ -869,6 +1056,109 @@ class DashboardPersistence:
             "notification_settings": self.notification_settings(),
         }
 
+    def series(self, window: str = "1h") -> dict[str, Any]:
+        seconds = self._window_seconds(window)
+        if seconds <= 0:
+            return {"window": "live", "mode": "live", "points": [], "axis_positions": [], "axis_wear": []}
+
+        now = int(time.time())
+        since = now - seconds
+        step = self._series_step(seconds)
+        bucket_expr = f"FLOOR(bucket / {step}) * {step}" if self.driver == "postgres" else f"CAST(bucket / {step} AS INTEGER) * {step}"
+
+        with self._connect() as db:
+            telemetry_rows = db.execute(
+                f"""
+                SELECT {bucket_expr} AS t,
+                    COALESCE(SUM(samples), 0) AS samples,
+                    COALESCE(SUM(joint_distance), 0) AS joint_distance,
+                    COALESCE(MAX(max_velocity), 0) AS max_velocity,
+                    COALESCE(SUM(avg_velocity_sum), 0) AS avg_velocity_sum,
+                    COALESCE(MAX(utilization_max), 0) AS utilization_max,
+                    COALESCE(SUM(latency_sum_ms), 0) AS latency_sum_ms
+                FROM telemetry_agg
+                WHERE bucket >= {since}
+                GROUP BY t
+                ORDER BY t
+                """
+            ).fetchall()
+            axis_rows = db.execute(
+                f"""
+                SELECT axis, COALESCE(SUM(distance), 0) AS distance,
+                    COALESCE(SUM(direction_changes), 0) AS direction_changes,
+                    COALESCE(SUM(near_limit_seconds), 0) AS near_limit_seconds,
+                    COALESCE(MAX(max_velocity), 0) AS max_velocity
+                FROM axis_agg
+                WHERE bucket >= {since}
+                GROUP BY axis
+                ORDER BY axis
+                """
+            ).fetchall()
+            position_rows = db.execute(
+                f"""
+                SELECT axis,
+                    COALESCE(SUM(position_sum), 0) AS position_sum,
+                    COALESCE(SUM(samples), 0) AS samples
+                FROM joint_position_agg
+                WHERE bucket >= {since}
+                GROUP BY axis
+                ORDER BY axis
+                """
+            ).fetchall()
+
+        points = []
+        for row in telemetry_rows:
+            samples = int(row["samples"])
+            avg_velocity = float(row["avg_velocity_sum"]) / samples if samples else 0.0
+            utilization = float(row["utilization_max"] or 0.0)
+            health_score = max(0, round(100 - min(40.0, float(row["joint_distance"]) * 2.5) - min(25.0, utilization / 6)))
+            points.append(
+                {
+                    "time": float(row["t"]),
+                    "samples": samples,
+                    "sample_rate_hz": samples / step,
+                    "joint_distance_rad": float(row["joint_distance"]),
+                    "avg_velocity_rad_s": avg_velocity,
+                    "max_velocity_rad_s": float(row["max_velocity"]),
+                    "utilization_max": utilization,
+                    "latency_avg_ms": float(row["latency_sum_ms"]) / samples if samples else 0.0,
+                    "health_score": health_score,
+                }
+            )
+
+        axis_wear = []
+        for row in axis_rows:
+            distance = float(row["distance"])
+            direction_changes = int(row["direction_changes"])
+            near_limit = float(row["near_limit_seconds"])
+            max_velocity = float(row["max_velocity"])
+            axis_wear.append(
+                {
+                    "axis": int(row["axis"]),
+                    "wear_score": round(min(100.0, distance * 4.5 + direction_changes * 0.12 + near_limit * 2.8 + max_velocity * 8), 1),
+                    "distance_rad": distance,
+                }
+            )
+
+        axis_positions = [
+            {
+                "axis": int(row["axis"]),
+                "position_rad": float(row["position_sum"]) / int(row["samples"]) if int(row["samples"]) else 0.0,
+            }
+            for row in position_rows
+        ]
+
+        return {
+            "window": window,
+            "mode": "history",
+            "step_seconds": step,
+            "since": since,
+            "until": now,
+            "points": points,
+            "axis_positions": axis_positions,
+            "axis_wear": axis_wear,
+        }
+
     def send_pending_mail(self) -> None:
         smtp_host = os.getenv("SMAN_SMTP_HOST")
         if not smtp_host:
@@ -908,7 +1198,7 @@ class DashboardPersistence:
                 status, error = "error", str(exc)
             with self._connect() as db:
                 db.execute(
-                    "UPDATE mail_queue SET status = ?, sent_at = ?, error = ? WHERE id = ?",
+                    self._sql("UPDATE mail_queue SET status = ?, sent_at = ?, error = ? WHERE id = ?"),
                     (status, time.time() if status == "sent" else None, error, row["id"]),
                 )
 
@@ -924,6 +1214,14 @@ def enqueue_payload(queue: asyncio.Queue, payload: dict[str, Any]) -> None:
         queue.put_nowait(payload)
 
 
+def csv_env(name: str, default: str = "") -> list[str]:
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
+def env_flag(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).lower() not in {"0", "false", "no", "off"}
+
+
 class RosTopicBridge(Node):
     def __init__(
         self,
@@ -936,19 +1234,48 @@ class RosTopicBridge(Node):
         self._queue = queue
         self._loop = loop
         self._store = store
-        self._subscriptions = []
+        self._forwarding_subscriptions: list[Any] = []
+        self._subscribed_topics: set[str] = set()
+        self._discover_topics = env_flag("ROS_DISCOVER_TOPICS", "0")
+        self._denylist = set(csv_env("ROS_DISCOVER_DENYLIST", "/parameter_events,/rosout"))
 
         for topic in topics:
-            msg_class = MESSAGE_TYPES[topic.type]
-            self._subscriptions.append(
-                self.create_subscription(
-                    msg_class,
-                    topic.name,
-                    self._callback_for(topic),
-                    10,
-                )
+            self._subscribe_topic(topic)
+
+        if self._discover_topics:
+            self.create_timer(float(os.getenv("ROS_DISCOVER_INTERVAL", "2.0")), self._discover_and_subscribe)
+            self.get_logger().info("ROS topic discovery enabled")
+
+    def _subscribe_topic(self, topic: TopicConfig) -> None:
+        if topic.name in self._subscribed_topics or not rclpy.ok():
+            return
+        try:
+            msg_class = resolve_message_class(topic.type)
+        except (AttributeError, ModuleNotFoundError, TypeError, ValueError) as exc:
+            self.get_logger().warn(f"Skipping {topic.name}: cannot import {topic.type}: {exc}")
+            return
+        try:
+            subscription = self.create_subscription(
+                msg_class,
+                topic.name,
+                self._callback_for(topic),
+                qos_profile_sensor_data,
             )
-            self.get_logger().info(f"Subscribed to {topic.name} ({topic.type})")
+        except Exception as exc:
+            if rclpy.ok():
+                self.get_logger().warn(f"Skipping {topic.name}: cannot subscribe to {topic.type}: {exc}")
+            return
+        self._forwarding_subscriptions.append(subscription)
+        self._subscribed_topics.add(topic.name)
+        self.get_logger().info(f"Subscribed to {topic.name} ({topic.type})")
+
+    def _discover_and_subscribe(self) -> None:
+        if not rclpy.ok():
+            return
+        for name, types in self.get_topic_names_and_types():
+            if name in self._denylist or name in self._subscribed_topics or not types:
+                continue
+            self._subscribe_topic(TopicConfig(name=name, type=types[0], label=name))
 
     def _callback_for(self, topic: TopicConfig):
         def callback(message: Any) -> None:
@@ -1183,9 +1510,19 @@ async def ingest_status() -> dict[str, str]:
     return {"status": "ready", "method": "POST"}
 
 
+@app.get("/api/snapshot")
+async def snapshot() -> dict[str, Any]:
+    return STORE.snapshot_payload()
+
+
 @app.get("/api/history/summary")
 async def history_summary(window: str = "24h") -> dict[str, Any]:
     return await asyncio.to_thread(PERSISTENCE.summary, window)
+
+
+@app.get("/api/history/series")
+async def history_series(window: str = "1h") -> dict[str, Any]:
+    return await asyncio.to_thread(PERSISTENCE.series, window)
 
 
 @app.get("/api/settings/notifications")

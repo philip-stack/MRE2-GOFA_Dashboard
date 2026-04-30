@@ -60,6 +60,20 @@
         </article>
       </section>
 
+      <section class="chart-toolbar" aria-label="Graph Zeitfilter">
+        <div>
+          <p class="eyebrow">Graphen</p>
+          <h2>Zeitbereich</h2>
+        </div>
+        <div class="segmented" id="graphWindow">
+          <button type="button" class="active" data-window="live">Live</button>
+          <button type="button" data-window="1h">Letzte Stunde</button>
+          <button type="button" data-window="24h">24h</button>
+          <button type="button" data-window="7d">7 Tage</button>
+          <button type="button" data-window="30d">30 Tage</button>
+        </div>
+      </section>
+
       <section class="dashboard-view active" id="userDashboard" data-dashboard-view="user" aria-labelledby="userViewTab">
         <section class="widget-grid user-widget-grid">
           <article class="panel widget-card">
@@ -387,7 +401,19 @@
               <p class="eyebrow">Developer View</p>
               <h2>Letzte ROS2-Nachricht</h2>
             </div>
-            <span>Raw JSON</span>
+            <div class="preview-controls">
+              <select id="messagePreviewFilter" aria-label="Raw JSON Topic Filter">
+                <option value="important">Relevant</option>
+                <option value="/egm/state">/egm/state</option>
+                <option value="/egm/raw_input">/egm/raw_input</option>
+                <option value="/egm/feedback_joint_states">/egm/feedback_joint_states</option>
+                <option value="/egm/feedback_pose">/egm/feedback_pose</option>
+                <option value="/joint_states">/joint_states</option>
+                <option value="all">Alle</option>
+              </select>
+              <button id="messagePreviewPause" type="button">Pause</button>
+              <span id="messagePreviewTopic">wartet</span>
+            </div>
           </div>
           <pre id="messagePreview">{}</pre>
         </article>
@@ -402,6 +428,6 @@
         }
       }
     </script>
-    <script type="module" src="/assets/app.js?v=maintenance-demo-2"></script>
+    <script type="module" src="/assets/app.js?v=egm-tcp-stable-1"></script>
   </body>
 </html>

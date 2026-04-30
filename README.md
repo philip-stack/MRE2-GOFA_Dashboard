@@ -2,6 +2,15 @@
 
 Web-Dashboard fuer ROS2-Daten eines ABB GoFa Roboters. Die App laeuft in Docker, liest ROS2-Topics im Container und streamt die Daten per WebSocket in den Browser.
 
+## Funktionen
+
+- Live-Dashboard fuer ABB GoFa / CRB 15000 mit Joint States, TCP-Pose, EGM-Zustand und 3D Digital Twin
+- Automatische ROS2-Topic-Discovery ueber die Host-Bridge
+- Developer-Ansicht mit Topic-Freshness, Paketfluss und gefilterter JSON-Vorschau
+- Maintenance-Ansicht mit persistierten Trends, Zeitfiltern und Event-Timeline
+- PostgreSQL-Datenbank als Docker-Service, SQLite als lokaler Fallback
+- Mail-Benachrichtigungen fuer kritische Events
+
 ## Start mit Docker
 
 ```bash
@@ -28,13 +37,36 @@ Laufende Logs:
 docker compose logs -f sman-gofa-dashboard
 ```
 
-Persistente Dashboard-Daten liegen auf dem Host unter:
+Persistente Dashboard-Daten liegen jetzt im Docker-Service `sman-dashboard-db` (PostgreSQL) im Volume `sman-dashboard-db`.
+Der Dashboard-Container verbindet sich standardmaessig ueber:
 
 ```text
-data/sman_dashboard.sqlite3
+postgresql://sman:sman@127.0.0.1:55433/sman
 ```
 
+Falls `SMAN_DATABASE_URL` nicht gesetzt ist, nutzt das Backend als Fallback weiterhin SQLite unter `data/sman_dashboard.sqlite3`.
+
 Die Datei `.env` wird von Docker Compose fuer lokale Zugangsdaten gelesen, aber nicht ins Image kopiert.
+
+## Datenbank und History
+
+Der Compose-Stack startet standardmaessig:
+
+- `sman-dashboard-db`: PostgreSQL auf `127.0.0.1:55433`
+- `sman-gofa-dashboard`: FastAPI, Frontend und ROS2-Workspace
+
+Wichtige API-Endpunkte:
+
+```text
+GET  /api/snapshot
+GET  /api/history/summary?window=1h|24h|7d|30d|90d
+GET  /api/history/series?window=1h|24h|7d|30d|90d
+POST /api/ingest
+```
+
+Die Graphen im Dashboard koennen zwischen `Live`, `Letzte Stunde`, `24h`, `7 Tage` und `30 Tage` umgeschaltet werden. Im Live-Modus werden WebSocket-Daten direkt angezeigt; in den historischen Fenstern werden aggregierte Daten aus PostgreSQL geladen.
+
+Hinweis: Achsmomente/Effort werden nur angezeigt, wenn der Roboter oder ein ROS2-Topic echte numerische Effort-Werte publiziert. Wenn die ABB-Schnittstelle leere Arrays oder `NaN` liefert, blendet das Dashboard Momentwerte aus.
 
 ## Demo-Modus ohne Roboter
 
@@ -112,9 +144,9 @@ Falls RViz/MoveIt-Visualisierungstools fehlen, installieren:
 sudo apt-get install -y ros-jazzy-rviz-visual-tools
 ```
 
-## Dashboard-Bridge fuer Joint States
+## Dashboard-Bridge fuer ROS-Topics
 
-Wenn das Dashboard unter `http://localhost:8080` laeuft, kann ein lokales ROS2-Terminal `/joint_states` an die Web-App weiterleiten:
+Wenn das Dashboard unter `http://localhost:8080` laeuft, kann ein lokales ROS2-Terminal die ROS-Topics an die Web-App weiterleiten:
 
 ```bash
 cd ~/SMAN
@@ -123,11 +155,63 @@ source ~/SMAN/ros2_ws/install/setup.bash
 ./tools/ros_joint_state_dashboard_bridge.py
 ```
 
-Die Bridge sendet standardmaessig an:
+Die Bridge entdeckt standardmaessig alle importierbaren ROS-Topics und sendet sie an:
 
 ```text
 http://127.0.0.1:8080/api/ingest
 ```
+
+Wenn die Bridge im Hintergrund laufen soll:
+
+```bash
+cd ~/SMAN
+source /opt/ros/jazzy/setup.bash
+source ~/SMAN/ros2_ws/install/setup.bash
+export ROS_LOG_DIR=/tmp/ros-log
+export SMAN_BRIDGE_DISCOVER_TOPICS=1
+export SMAN_BRIDGE_DENYLIST=/parameter_events,/rosout
+setsid ./tools/ros_joint_state_dashboard_bridge.py </dev/null >/tmp/sman-ros-topic-bridge.log 2>&1 &
+```
+
+Pruefen:
+
+```bash
+ps -ef | rg 'ros_joint_state_dashboard_bridge|sman_dashboard_ros_topic_bridge'
+tail -f /tmp/sman-ros-topic-bridge.log
+```
+
+Nuetzliche Optionen:
+
+```bash
+# Nur vorkonfigurierte Topics weiterleiten, keine Auto-Discovery:
+export SMAN_BRIDGE_DISCOVER_TOPICS=0
+
+# Bestimmte Topics auslassen:
+export SMAN_BRIDGE_DENYLIST=/parameter_events,/rosout,/tf
+
+# Sendeintervall pro Topic begrenzen, z.B. 10 Hz:
+export SMAN_DASHBOARD_MIN_INTERVAL=0.1
+```
+
+## EGM-Telemetrie
+
+Die angepasste ABB-Hardware-Interface-Konfiguration kann EGM-Daten als ROS2-Topics publizieren:
+
+```text
+/egm/state
+/egm/feedback_joint_states
+/egm/planned_joint_states
+/egm/feedback_pose
+/egm/planned_pose
+/egm/raw_input
+```
+
+Das Dashboard bevorzugt echte Feedback-Daten:
+
+- Joint-Anzeige und Digital Twin nutzen `/egm/feedback_joint_states`, wenn vorhanden, sonst `/joint_states`.
+- TCP-Anzeige nutzt `/egm/feedback_pose`, wenn frisch, sonst eine einfache Joint-basierte Schaetzung.
+- Leere EGM-Rohpakete wie `channels: []` loeschen die Controller-State-Anzeige nicht.
+- Joint-Namen werden im UI als `Joint 1` bis `Joint 6` angezeigt; die originalen ROS-Namen bleiben im Payload als `raw_names` erhalten.
 
 ## Morgen-Checkliste: Wieder mit dem Roboter verbinden
 
@@ -220,7 +304,7 @@ joint_trajectory_controller active
 joint_state_broadcaster active
 ```
 
-### 4. Dashboard live mit ROS `/joint_states` versorgen
+### 4. Dashboard live mit ROS-Topics versorgen
 
 In einem dritten Terminal:
 
@@ -236,9 +320,9 @@ source ~/SMAN/ros2_ws/install/setup.bash
 Erwartet:
 
 ```text
-Forwarding /joint_states to http://127.0.0.1:8080/api/ingest
+Forwarding ROS topics to http://127.0.0.1:8080/api/ingest
+Forwarding /joint_states (sensor_msgs/msg/JointState)
 Forwarded 1 /joint_states samples
-Forwarded 100 /joint_states samples
 ```
 
 Diese Bridge muss waehrend des Betriebs offen bleiben. Wenn sie mit `Ctrl+C` beendet wird, hat das Dashboard keine Live-Daten mehr.

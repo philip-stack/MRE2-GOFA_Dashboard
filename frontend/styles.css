@@ -306,9 +306,33 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.chart-toolbar,
 .panel {
   min-height: 320px;
   overflow: hidden;
+}
+
+.chart-toolbar {
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  margin: 0 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(24, 29, 38, 0.84);
+}
+
+.chart-toolbar h2 {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+}
+
+.chart-toolbar .segmented {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .widget-card {
@@ -866,6 +890,51 @@ pre {
 
 .mail-settings button {
   padding: 0 14px;
+}
+
+.preview-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preview-controls select,
+.preview-controls button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(16, 18, 23, 0.86);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.preview-controls select {
+  max-width: min(260px, 42vw);
+  padding: 0 10px;
+}
+
+.preview-controls button {
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.preview-controls button.active {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.preview-controls span {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty {

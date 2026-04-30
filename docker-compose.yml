@@ -1,9 +1,30 @@
 services:
+  sman-dashboard-db:
+    image: postgres:16-alpine
+    container_name: sman-dashboard-db
+    environment:
+      POSTGRES_DB: "${SMAN_POSTGRES_DB:-sman}"
+      POSTGRES_USER: "${SMAN_POSTGRES_USER:-sman}"
+      POSTGRES_PASSWORD: "${SMAN_POSTGRES_PASSWORD:-sman}"
+    ports:
+      - "127.0.0.1:${SMAN_POSTGRES_PORT:-55433}:5432"
+    volumes:
+      - sman-dashboard-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   sman-gofa-dashboard:
     build: .
     container_name: sman-gofa-dashboard
     network_mode: host
     ipc: host
+    depends_on:
+      sman-dashboard-db:
+        condition: service_healthy
     cap_add:
       - NET_ADMIN
     environment:
@@ -13,6 +34,7 @@ services:
       EGM_HOST: "${EGM_HOST:-0.0.0.0}"
       EGM_PORT: "${EGM_PORT:-6511}"
       SMAN_DATA_DIR: "${SMAN_DATA_DIR:-/app/data}"
+      SMAN_DATABASE_URL: "${SMAN_DATABASE_URL:-postgresql://sman:sman@127.0.0.1:55433/sman}"
       SMAN_MAIL_RECIPIENTS: "${SMAN_MAIL_RECIPIENTS:-}"
       SMAN_SMTP_HOST: "${SMAN_SMTP_HOST:-}"
       SMAN_SMTP_PORT: "${SMAN_SMTP_PORT:-587}"
@@ -22,6 +44,8 @@ services:
       SMAN_MAIL_FROM: "${SMAN_MAIL_FROM:-}"
       SMAN_HOST_INTERFACE: "${SMAN_HOST_INTERFACE:-}"
       SMAN_EXTRA_HOST_IP: "${SMAN_EXTRA_HOST_IP:-}"
+      ROS_DISCOVER_TOPICS: "${ROS_DISCOVER_TOPICS:-1}"
+      ROS_DISCOVER_DENYLIST: "${ROS_DISCOVER_DENYLIST:-/parameter_events,/rosout}"
       ROS_TOPICS: >
         [
           {"name": "/joint_states", "type": "sensor_msgs/msg/JointState", "label": "Joint States"},
@@ -31,3 +55,6 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+
+volumes:
+  sman-dashboard-db:

@@ -19,11 +19,15 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
+    abb_egm_msgs
     abb_egm_rws_managers
+    geometry_msgs
     hardware_interface
     pluginlib
     rclcpp
     rclcpp_lifecycle
+    sensor_msgs
+    std_msgs
 )
 
 # find dependencies

@@ -15,6 +15,9 @@ const topicListEl = document.getElementById("topicList");
 const developerTopicListEl = document.getElementById("developerTopicList");
 const developerJointListEl = document.getElementById("developerJointList");
 const messagePreviewEl = document.getElementById("messagePreview");
+const messagePreviewFilterEl = document.getElementById("messagePreviewFilter");
+const messagePreviewPauseEl = document.getElementById("messagePreviewPause");
+const messagePreviewTopicEl = document.getElementById("messagePreviewTopic");
 const jointTimestampEl = document.getElementById("jointTimestamp");
 const developerJointTimestampEl = document.getElementById("developerJointTimestamp");
 const twinCanvasEl = document.getElementById("twinCanvas");
@@ -25,6 +28,7 @@ const jointPopoverEl = document.getElementById("jointPopover");
 const demoModeButtonEl = document.getElementById("demoModeButton");
 const viewTabs = [...document.querySelectorAll(".view-tab")];
 const dashboardViews = [...document.querySelectorAll("[data-dashboard-view]")];
+const graphWindowEl = document.getElementById("graphWindow");
 const jointActivityValueEl = document.getElementById("jointActivityValue");
 const rateValueEl = document.getElementById("rateValue");
 const jointRangeValueEl = document.getElementById("jointRangeValue");
@@ -88,33 +92,47 @@ const charts = {
     stroke: "#20c997",
     fill: "rgba(32, 201, 151, 0.12)",
     maxSamples: 64,
+    yLabel: "rad/s",
+    xLabel: "Zeit",
   }),
   rate: createSparkline(document.getElementById("rateChart"), {
     stroke: "#5cc8ff",
     fill: "rgba(92, 200, 255, 0.12)",
     maxSamples: 64,
+    yLabel: "Hz",
+    xLabel: "Zeit",
   }),
   packetFlow: createSparkline(document.getElementById("packetFlowChart"), {
     stroke: "#ffbd4a",
     fill: "rgba(255, 189, 74, 0.11)",
     maxSamples: 64,
+    yLabel: "msg/s",
+    xLabel: "Zeit",
   }),
   jointPositions: createBarChart(document.getElementById("jointPositionChart"), {
     color: "#20c997",
     accent: "#ff2a2a",
+    yLabel: "rad",
+    labels: ["J1", "J2", "J3", "J4", "J5", "J6"],
   }),
   topicFreshness: createBarChart(document.getElementById("topicFreshnessChart"), {
     color: "#5cc8ff",
     accent: "#ffbd4a",
+    yLabel: "s",
   }),
   maintenanceHealth: createSparkline(document.getElementById("maintenanceHealthChart"), {
     stroke: "#20c997",
     fill: "rgba(32, 201, 151, 0.12)",
     maxSamples: 48,
+    yLabel: "Score",
+    xLabel: "Zeit",
+    fixedMax: 100,
   }),
   axisWear: createBarChart(document.getElementById("axisWearChart"), {
     color: "#20c997",
     accent: "#ffbd4a",
+    yLabel: "Score",
+    labels: ["J1", "J2", "J3", "J4", "J5", "J6"],
   }),
   workspace: createWorkspaceMap(document.getElementById("workspaceMap")),
 };
@@ -140,6 +158,9 @@ const state = {
   realDataReceived: false,
   forceDemo: new URLSearchParams(window.location.search).get("demo") === "1",
   previousTcpPose: null,
+  currentTcpPose: null,
+  currentTcpSpeed: 0,
+  lastTcpPoseReceivedAt: null,
   currentMotionLabel: "Idle",
   latencySamples: [],
   jitterSamples: [],
@@ -150,7 +171,13 @@ const state = {
   lastMovingAt: null,
   trajectorySamples: 0,
   egmState: null,
+  lastEgmStateAt: null,
+  activeJointTopic: null,
+  messagePreviewPaused: false,
+  messagePreviewFilter: "important",
+  lastMessagePreviewAt: 0,
   maintenanceWindow: "24h",
+  graphWindow: "live",
   maintenanceTimer: null,
 };
 
@@ -165,7 +192,10 @@ const twin = createDigitalTwin(twinCanvasEl, {
 function setConnection(isOnline, label) {
   statusEl.classList.toggle("online", isOnline);
   statusEl.classList.toggle("offline", !isOnline);
-  statusEl.querySelector("span:last-child").textContent = label;
+  const labelEl = statusEl.querySelector("span:last-child");
+  if (labelEl.textContent !== label) {
+    labelEl.textContent = label;
+  }
 }
 
 function formatAge(age) {
@@ -179,12 +209,48 @@ function formatTime(timestamp) {
   return new Date(timestamp * 1000).toLocaleTimeString("de-DE");
 }
 
+function formatDateTime(timestamp) {
+  if (!timestamp) return "-";
+  return new Date(timestamp * 1000).toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatNumber(value, digits = 3) {
   return Number.isFinite(value) ? value.toFixed(digits) : "-";
 }
 
 function radToDeg(value) {
   return Number.isFinite(value) ? (value * 180) / Math.PI : NaN;
+}
+
+function displayJointName(name, index) {
+  const match = String(name || "").match(/(?:joint[_\s-]*)(\d+)$/i);
+  const number = match ? Number(match[1]) : index + 1;
+  return `Joint ${number}`;
+}
+
+function quaternionToEuler(orientation = {}) {
+  const x = Number(orientation.x) || 0;
+  const y = Number(orientation.y) || 0;
+  const z = Number(orientation.z) || 0;
+  const w = Number.isFinite(Number(orientation.w)) ? Number(orientation.w) : 1;
+
+  const sinrCosp = 2 * (w * x + y * z);
+  const cosrCosp = 1 - 2 * (x * x + y * y);
+  const roll = Math.atan2(sinrCosp, cosrCosp);
+
+  const sinp = 2 * (w * y - z * x);
+  const pitch = Math.abs(sinp) >= 1 ? Math.sign(sinp) * Math.PI / 2 : Math.asin(sinp);
+
+  const sinyCosp = 2 * (w * z + x * y);
+  const cosyCosp = 1 - 2 * (y * y + z * z);
+  const yaw = Math.atan2(sinyCosp, cosyCosp);
+
+  return { roll, pitch, yaw };
 }
 
 function effortLabel(value) {
@@ -222,6 +288,9 @@ function resetDemoState() {
   state.lastJointReceivedAt = null;
   state.previousJointPositions = null;
   state.previousTcpPose = null;
+  state.currentTcpPose = null;
+  state.currentTcpSpeed = 0;
+  state.lastTcpPoseReceivedAt = null;
   state.jointUpdateTimes = [];
   state.packetTimes = [];
   state.packetCount = 0;
@@ -247,7 +316,7 @@ function updateLiveRate(receivedAt) {
     liveRateEl.textContent = "0.0 Hz";
     rateValueEl.textContent = "0.0 Hz";
     state.lastLiveRate = 0;
-    charts.rate.push(0);
+    if (state.graphWindow === "live") charts.rate.push(0);
     return;
   }
 
@@ -256,7 +325,7 @@ function updateLiveRate(receivedAt) {
   liveRateEl.textContent = `${rate.toFixed(1)} Hz`;
   rateValueEl.textContent = `${rate.toFixed(1)} Hz`;
   state.lastLiveRate = rate;
-  charts.rate.push(rate);
+  if (state.graphWindow === "live") charts.rate.push(rate);
 }
 
 function updatePacketFlow(receivedAt) {
@@ -265,7 +334,7 @@ function updatePacketFlow(receivedAt) {
   state.packetTimes = state.packetTimes.filter((time) => receivedAt - time <= 10);
   const packetRate = state.packetTimes.length / 10;
   packetFlowValueEl.textContent = `${state.packetCount} msg`;
-  charts.packetFlow.push(packetRate);
+  if (state.graphWindow === "live") charts.packetFlow.push(packetRate);
 }
 
 function updateJointWidgets(data) {
@@ -278,8 +347,10 @@ function updateJointWidgets(data) {
 
   jointActivityValueEl.textContent = `${activity.toFixed(3)} rad/s`;
   jointRangeValueEl.textContent = `${range.toFixed(2)} rad`;
-  charts.jointActivity.push(activity);
-  charts.jointPositions.setValues(positions);
+  if (state.graphWindow === "live") {
+    charts.jointActivity.push(activity);
+    charts.jointPositions.setValues(positions);
+  }
 }
 
 function estimateTcpPose(positions) {
@@ -302,6 +373,10 @@ function estimateTcpPose(positions) {
 
 function updateTcpPose(data, receivedAt) {
   const pose = estimateTcpPose(data.positions || []);
+  return applyTcpPose(pose, receivedAt, "estimated");
+}
+
+function applyTcpPose(pose, receivedAt, source = "estimated") {
   let speed = 0;
 
   if (state.previousTcpPose) {
@@ -309,10 +384,16 @@ function updateTcpPose(data, receivedAt) {
     const dx = pose.x - state.previousTcpPose.x;
     const dy = pose.y - state.previousTcpPose.y;
     const dz = pose.z - state.previousTcpPose.z;
-    speed = Math.sqrt(dx * dx + dy * dy + dz * dz) / dt;
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    speed = distance < 0.0005 ? 0 : distance / dt;
   }
 
   state.previousTcpPose = { ...pose, receivedAt };
+  state.currentTcpPose = pose;
+  state.currentTcpSpeed = speed;
+  if (source === "egm") {
+    state.lastTcpPoseReceivedAt = receivedAt;
+  }
   tcpXEl.textContent = `${pose.x.toFixed(3)} m`;
   tcpYEl.textContent = `${pose.y.toFixed(3)} m`;
   tcpZEl.textContent = `${pose.z.toFixed(3)} m`;
@@ -328,16 +409,51 @@ function updateTcpPose(data, receivedAt) {
   return { pose, speed };
 }
 
+function readPoseStamped(data) {
+  const position = data?.position || data?.pose?.position;
+  const orientation = data?.orientation || data?.pose?.orientation;
+  if (!position) return null;
+  const euler = quaternionToEuler(orientation);
+  return {
+    x: Number(position.x) || 0,
+    y: Number(position.y) || 0,
+    z: Number(position.z) || 0,
+    ...euler,
+  };
+}
+
+function updateTcpPoseFromPoseStamped(data, receivedAt) {
+  const pose = readPoseStamped(data);
+  if (!pose) return;
+  const tcp = applyTcpPose(pose, receivedAt, "egm");
+  twinPoseLabelEl.textContent = "EGM TCP";
+  return tcp;
+}
+
+function currentTcpForHealth(data) {
+  return {
+    pose: state.currentTcpPose || estimateTcpPose(data.positions || []),
+    speed: state.currentTcpSpeed || 0,
+  };
+}
+
 function average(values) {
   if (!values.length) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function comparableHeaderStamp(headerStamp, receivedAt) {
+  if (!Number.isFinite(headerStamp) || !Number.isFinite(receivedAt)) return null;
+  const deltaSeconds = receivedAt - headerStamp;
+  if (headerStamp < 1_000_000_000 || Math.abs(deltaSeconds) > 60) return null;
+  return Math.max(0, deltaSeconds * 1000);
+}
+
 function updateDataQuality(data, receivedAt) {
   state.sampleCount += 1;
 
-  if (data.header_stamp) {
-    const latencyMs = Math.max(0, (receivedAt - data.header_stamp) * 1000);
+  const latencyMs = comparableHeaderStamp(data.header_stamp, receivedAt);
+  if (latencyMs !== null) {
     state.latencySamples.push(latencyMs);
     state.latencySamples = state.latencySamples.slice(-80);
 
@@ -346,6 +462,9 @@ function updateDataQuality(data, receivedAt) {
       state.jitterSamples.push(Math.abs(latencyMs - previous));
       state.jitterSamples = state.jitterSamples.slice(-80);
     }
+  } else if (state.latencySamples.some((value) => value > 60_000)) {
+    state.latencySamples = [];
+    state.jitterSamples = [];
   }
 
   const dataAgeMs = Math.max(0, (Date.now() / 1000 - receivedAt) * 1000);
@@ -410,25 +529,69 @@ function updateHealth(data, quality, tcp) {
 }
 
 function updateEgmState(data) {
-  if (data?.egm_channels?.length) {
-    const channel = data.egm_channels[0];
-    data = {
-      motor_state_label: channel.motor_state === 2 ? "on" : channel.motor_state === 3 ? "off" : "unknown",
-      mci_state_label: channel.egm_client_state === 4 ? "running" : channel.egm_client_state === 3 ? "stopped" : channel.egm_client_state === 2 ? "error" : "unknown",
-      rapid_exec_state_label: channel.rapid_execution_state === 3 ? "running" : channel.rapid_execution_state === 2 ? "stopped" : "unknown",
-      mci_convergence_met: channel.egm_convergence_met,
-      utilization_rate: channel.utilization_rate,
-    };
-  }
-  state.egmState = data || {};
-  egmStateValueEl.textContent = data?.mci_state_label || "-";
-  egmMotorsValueEl.textContent = data?.motor_state_label || "-";
-  egmRapidValueEl.textContent = data?.rapid_exec_state_label || "-";
-  egmConvergenceValueEl.textContent = data?.mci_convergence_met === true ? "met" : data?.mci_convergence_met === false ? "open" : "-";
-  const utilization = data?.utilization_rate;
+  const normalized = normalizeEgmState(data);
+  if (!normalized) return;
+
+  state.egmState = {
+    ...(state.egmState || {}),
+    ...Object.fromEntries(Object.entries(normalized).filter(([, value]) => value !== null && value !== undefined)),
+  };
+  state.lastEgmStateAt = Date.now() / 1000;
+
+  egmStateValueEl.textContent = state.egmState.egmState || "-";
+  egmMotorsValueEl.textContent = state.egmState.motors || "-";
+  egmRapidValueEl.textContent = state.egmState.rapid || "-";
+  egmConvergenceValueEl.textContent = state.egmState.convergence === true ? "met" : state.egmState.convergence === false ? "open" : "-";
+  const utilization = state.egmState.utilization;
   const utilizationLabel = Number.isFinite(utilization) ? `${utilization.toFixed(1)} %` : "-";
   egmUtilizationDeveloperValueEl.textContent = utilizationLabel;
   utilizationValueEl.textContent = utilizationLabel;
+}
+
+function labelEnum(value, labels) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return labels[number] || `unknown:${number}`;
+}
+
+function normalizeEgmState(data) {
+  if (!data) return null;
+  if (typeof data.data === "string") {
+    try {
+      data = JSON.parse(data.data);
+    } catch {
+      return null;
+    }
+  }
+
+  if (Array.isArray(data.channels) && data.channels.length === 0) return null;
+  if (Array.isArray(data.egm_channels) && data.egm_channels.length === 0) return null;
+
+  const channel = data.egm_channels?.[0] || data.channels?.[0] || data;
+  if (!channel || typeof channel !== "object") return null;
+  const utilization = Number(channel.utilization_rate);
+  const result = {
+    egmState: channel.mci_state_label || labelEnum(channel.egm_client_state ?? channel.egm_state ?? channel.mci_state, {
+      1: "undefined",
+      2: "error",
+      3: "stopped",
+      4: "running",
+    }),
+    motors: channel.motor_state_label || labelEnum(channel.motor_state, {
+      1: "undefined",
+      2: "on",
+      3: "off",
+    }),
+    rapid: channel.rapid_exec_state_label || labelEnum(channel.rapid_execution_state ?? channel.rapid_exec_state, {
+      1: "undefined",
+      2: "stopped",
+      3: "running",
+    }),
+    convergence: channel.mci_convergence_met ?? channel.egm_convergence_met,
+    utilization: Number.isFinite(utilization) ? utilization : null,
+  };
+
+  return Object.values(result).some((value) => value !== null && value !== undefined) ? result : null;
 }
 
 function renderMaintenanceSummary(summary) {
@@ -441,8 +604,10 @@ function renderMaintenanceSummary(summary) {
   utilizationValueEl.textContent = Number.isFinite(summary.utilization_max) && summary.utilization_max > 0
     ? `${summary.utilization_max.toFixed(1)} %`
     : utilizationValueEl.textContent || "-";
-  charts.maintenanceHealth.push(summary.health_score ?? 100);
-  charts.axisWear.setValues((summary.axis || []).map((axis) => axis.wear_score || 0), { max: 100 });
+  if (state.graphWindow === "live") {
+    charts.maintenanceHealth.push(summary.health_score ?? 100);
+    charts.axisWear.setValues((summary.axis || []).map((axis) => axis.wear_score || 0), { max: 100 });
+  }
 
   axisWearListEl.innerHTML = "";
   const axisRows = summary.axis?.length ? summary.axis : Array.from({ length: 6 }, (_, index) => ({
@@ -519,6 +684,50 @@ async function refreshMaintenanceSummary() {
     renderMaintenanceSummary(await response.json());
   } catch {
     // The dashboard still works in demo/offline mode without the history API.
+  }
+}
+
+async function refreshGraphHistory() {
+  if (state.graphWindow === "live") {
+    charts.jointPositions.setValues(state.jointPositions);
+    await refreshMaintenanceSummary();
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/history/series?window=${encodeURIComponent(state.graphWindow)}`);
+    if (!response.ok) return;
+    const history = await response.json();
+    const points = history.points || [];
+    const axisPositions = Array.from({ length: 6 }, (_, index) => {
+      const row = (history.axis_positions || []).find((item) => item.axis === index + 1);
+      return row?.position_rad ?? 0;
+    });
+    const axisWear = Array.from({ length: 6 }, (_, index) => {
+      const row = (history.axis_wear || []).find((item) => item.axis === index + 1);
+      return row?.wear_score ?? 0;
+    });
+
+    charts.jointActivity.setSeries(points.map((point) => point.avg_velocity_rad_s || 0), {
+      firstLabel: formatDateTime(points[0]?.time),
+      lastLabel: formatDateTime(points.at(-1)?.time),
+    });
+    charts.rate.setSeries(points.map((point) => point.sample_rate_hz || 0), {
+      firstLabel: formatDateTime(points[0]?.time),
+      lastLabel: formatDateTime(points.at(-1)?.time),
+    });
+    charts.packetFlow.setSeries(points.map((point) => point.sample_rate_hz || 0), {
+      firstLabel: formatDateTime(points[0]?.time),
+      lastLabel: formatDateTime(points.at(-1)?.time),
+    });
+    charts.maintenanceHealth.setSeries(points.map((point) => point.health_score ?? 100), {
+      firstLabel: formatDateTime(points[0]?.time),
+      lastLabel: formatDateTime(points.at(-1)?.time),
+    });
+    charts.jointPositions.setValues(axisPositions, { labels: ["J1", "J2", "J3", "J4", "J5", "J6"] });
+    charts.axisWear.setValues(axisWear, { max: 100, labels: ["J1", "J2", "J3", "J4", "J5", "J6"] });
+  } catch {
+    // Historical charts are optional; live data continues independently.
   }
 }
 
@@ -630,11 +839,19 @@ function updateShowcaseStatus(data, receivedAt) {
 function renderJointPopover(detail) {
   const position = detail.position;
   const degrees = radToDeg(position);
+  const effortField = Number.isFinite(detail.effort)
+    ? `
+      <div class="popover-field">
+        <span>Moment</span>
+        <strong>${effortLabel(detail.effort)}</strong>
+      </div>
+    `
+    : "";
   jointPopoverEl.innerHTML = `
     <div class="popover-head">
       <div>
         <span>${detail.topic}</span>
-        <h3>${detail.name}</h3>
+        <h3>${detail.displayName}</h3>
       </div>
       <button class="popover-close" type="button" aria-label="Details schliessen">×</button>
     </div>
@@ -651,10 +868,7 @@ function renderJointPopover(detail) {
         <span>Geschwindigkeit</span>
         <strong>${velocityLabel(detail.velocity)}</strong>
       </div>
-      <div class="popover-field">
-        <span>Effort / Moment</span>
-        <strong>${effortLabel(detail.effort)}</strong>
-      </div>
+      ${effortField}
       <div class="popover-field">
         <span>Normierter Weg</span>
         <strong>${formatNumber(detail.normalized, 1)} %</strong>
@@ -782,7 +996,16 @@ function updateTopics(statusTopics = []) {
   }
 }
 
-function updateJointStates(data) {
+function shouldUseJointTopic(topic) {
+  if (topic === "/egm/planned_joint_states") return false;
+  if (!state.activeJointTopic) return topic === "/egm/feedback_joint_states" || topic === "/joint_states";
+  if (state.activeJointTopic === "/joint_states" && topic === "/egm/feedback_joint_states") return true;
+  return topic === state.activeJointTopic;
+}
+
+function updateJointStates(data, topic = "/joint_states") {
+  if (!shouldUseJointTopic(topic)) return;
+  state.activeJointTopic = topic;
   const receivedAt = data.received_at ?? Date.now() / 1000;
   jointTimestampEl.textContent = data.header_stamp ? `ROS ${data.header_stamp.toFixed(3)}` : "-";
   developerJointTimestampEl.textContent = jointTimestampEl.textContent;
@@ -801,11 +1024,12 @@ function updateJointStates(data) {
     return {
       index,
       name,
+      displayName: displayJointName(name, index),
       position,
       velocity: data.velocities?.[index],
       effort: data.efforts?.[index],
       normalized,
-      topic: "/joint_states",
+      topic,
       rosStamp: data.header_stamp,
       receivedAt,
     };
@@ -817,8 +1041,8 @@ function updateJointStates(data) {
     row.dataset.jointIndex = String(detail.index);
     row.tabIndex = 0;
     row.innerHTML = `
-      <div class="joint-name" title="${detail.name}">${detail.name}</div>
-      <div class="bar" aria-label="${detail.name} Position"><span style="width: ${detail.normalized}%"></span></div>
+      <div class="joint-name" title="${detail.name}">${detail.displayName}</div>
+      <div class="bar" aria-label="${detail.displayName} Position"><span style="width: ${detail.normalized}%"></span></div>
       <div class="joint-value">${detail.position.toFixed(3)} rad</div>
     `;
     row.addEventListener("mouseenter", () => {
@@ -848,8 +1072,8 @@ function updateJointStates(data) {
     developerRow.dataset.jointIndex = String(detail.index);
     developerRow.tabIndex = 0;
     developerRow.innerHTML = `
-      <div class="joint-name" title="${detail.name}">${detail.name}</div>
-      <div class="bar" aria-label="${detail.name} Position"><span style="width: ${detail.normalized}%"></span></div>
+      <div class="joint-name" title="${detail.name}">${detail.displayName}</div>
+      <div class="bar" aria-label="${detail.displayName} Position"><span style="width: ${detail.normalized}%"></span></div>
       <div class="joint-value">${detail.position.toFixed(3)} rad</div>
     `;
     developerRow.addEventListener("mouseenter", () => {
@@ -879,18 +1103,89 @@ function updateJointStates(data) {
   twin.setJoints(state.jointPositions);
   twinStatusEl.textContent = "synchron";
   twinJointCountEl.textContent = `${data.names.length} Achsen`;
-  twinPoseLabelEl.textContent = "ROS2";
   updateJointWidgets(data);
   updateShowcaseStatus(data, receivedAt);
-  const tcp = updateTcpPose(data, receivedAt);
+  const hasFreshEgmTcp = state.lastTcpPoseReceivedAt !== null && receivedAt - state.lastTcpPoseReceivedAt < 1.0;
+  const tcp = hasFreshEgmTcp ? currentTcpForHealth(data) : updateTcpPose(data, receivedAt);
+  if (!hasFreshEgmTcp) {
+    twinPoseLabelEl.textContent = "ROS2";
+  }
   const quality = updateDataQuality(data, receivedAt);
   updateHealth(data, quality, tcp);
   refreshOpenJointPopover();
 }
 
+function previewPayload(payload) {
+  const data = payload.data || {};
+  if (payload.topic === "/egm/raw_input" && typeof data.data === "string") {
+    try {
+      return {
+        ...payload,
+        data: JSON.parse(data.data),
+      };
+    } catch {
+      return payload;
+    }
+  }
+  if (payload.type === "sensor_msgs/msg/JointState") {
+    return {
+      kind: payload.kind,
+      topic: payload.topic,
+      type: payload.type,
+      received_at: payload.received_at,
+      data: {
+        names: data.names,
+        positions: data.positions,
+        velocities: data.velocities,
+      },
+    };
+  }
+  if (payload.type === "geometry_msgs/msg/PoseStamped") {
+    return {
+      kind: payload.kind,
+      topic: payload.topic,
+      type: payload.type,
+      received_at: payload.received_at,
+      data,
+    };
+  }
+  return payload;
+}
+
+function shouldPreviewMessage(payload) {
+  if (state.messagePreviewPaused) return false;
+  const filter = state.messagePreviewFilter;
+  if (filter !== "all" && filter !== "important" && payload.topic !== filter) return false;
+
+  if (filter === "important") {
+    const importantTopics = new Set([
+      "/egm/state",
+      "/egm/raw_input",
+      "/egm/feedback_joint_states",
+      "/egm/feedback_pose",
+      "/joint_states",
+    ]);
+    if (!importantTopics.has(payload.topic)) return false;
+  }
+
+  const now = performance.now();
+  const minIntervalMs = filter === "all" ? 1200 : 700;
+  if (now - state.lastMessagePreviewAt < minIntervalMs) return false;
+  state.lastMessagePreviewAt = now;
+  return true;
+}
+
+function updateMessagePreview(payload) {
+  if (!shouldPreviewMessage(payload)) return;
+  messagePreviewEl.textContent = JSON.stringify(previewPayload(payload), null, 2);
+  if (messagePreviewTopicEl) {
+    messagePreviewTopicEl.textContent = payload.topic || "Raw JSON";
+  }
+}
+
 function handleMessage(payload) {
   if (!payload.demo && payload.kind === "topic") {
-    setLiveMode(payload.source ? `Live ${payload.source}` : "ROS live");
+    setLiveMode("ROS live");
   }
 
   if (payload.kind === "hello") {
@@ -920,10 +1215,14 @@ function handleMessage(payload) {
 
   updatePacketFlow(payload.received_at ?? Date.now() / 1000);
   lastPacketEl.textContent = formatTime(payload.received_at);
-  messagePreviewEl.textContent = JSON.stringify(payload, null, 2);
+  updateMessagePreview(payload);
 
   if (payload.type === "sensor_msgs/msg/JointState") {
-    updateJointStates({ ...payload.data, received_at: payload.received_at });
+    updateJointStates({ ...payload.data, received_at: payload.received_at }, payload.topic);
+  } else if (payload.type === "geometry_msgs/msg/PoseStamped" && payload.topic === "/egm/feedback_pose") {
+    updateTcpPoseFromPoseStamped(payload.data, payload.received_at ?? Date.now() / 1000);
+  } else if (payload.topic === "/egm/raw_input") {
+    updateEgmState(payload.data);
   } else if (payload.topic === "/egm/state" || payload.type === "abb_egm_msgs/msg/EGMState") {
     updateEgmState(payload.data);
   }
@@ -1114,6 +1413,7 @@ charts.jointPositions.setValues(state.jointPositions);
 Object.values(charts).forEach((chart) => chart.draw());
 connect();
 refreshMaintenanceSummary();
+refreshGraphHistory();
 state.maintenanceTimer = setInterval(refreshMaintenanceSummary, 15000);
 window.setTimeout(() => {
   if (state.forceDemo || (!state.realDataReceived && !state.lastJointReceivedAt)) {
@@ -1127,12 +1427,33 @@ viewTabs.forEach((tab) => {
 
 demoModeButtonEl?.addEventListener("click", enableDemoMode);
 
+messagePreviewFilterEl?.addEventListener("change", () => {
+  state.messagePreviewFilter = messagePreviewFilterEl.value;
+  state.lastMessagePreviewAt = 0;
+  messagePreviewEl.textContent = "{}";
+  if (messagePreviewTopicEl) messagePreviewTopicEl.textContent = "wartet";
+});
+
+messagePreviewPauseEl?.addEventListener("click", () => {
+  state.messagePreviewPaused = !state.messagePreviewPaused;
+  messagePreviewPauseEl.classList.toggle("active", state.messagePreviewPaused);
+  messagePreviewPauseEl.textContent = state.messagePreviewPaused ? "Weiter" : "Pause";
+});
+
 maintenanceWindowEl?.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-window]");
   if (!button) return;
   state.maintenanceWindow = button.dataset.window;
   maintenanceWindowEl.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
   refreshMaintenanceSummary();
+});
+
+graphWindowEl?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-window]");
+  if (!button) return;
+  state.graphWindow = button.dataset.window;
+  graphWindowEl.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
+  refreshGraphHistory();
 });
 
 mailSettingsFormEl?.addEventListener("submit", saveMailSettings);
@@ -1168,16 +1489,37 @@ function prepareCanvas(canvas) {
   return { ctx, width, height };
 }
 
-function drawGrid(ctx, width, height) {
+function drawGrid(ctx, width, height, area = { left: 38, right: width - 14, top: 16, bottom: height - 30 }, yTicks = []) {
   ctx.strokeStyle = "rgba(157, 166, 178, 0.16)";
   ctx.lineWidth = 1;
-  for (let index = 1; index < 4; index += 1) {
-    const y = (height / 4) * index;
+  ctx.font = "11px Inter, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(213, 220, 231, 0.72)";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let index = 0; index < 4; index += 1) {
+    const ratio = index / 3;
+    const y = area.top + (area.bottom - area.top) * ratio;
     ctx.beginPath();
-    ctx.moveTo(14, y);
-    ctx.lineTo(width - 14, y);
+    ctx.moveTo(area.left, y);
+    ctx.lineTo(area.right, y);
     ctx.stroke();
+    if (yTicks[index] !== undefined) {
+      ctx.fillText(yTicks[index], area.left - 7, y);
+    }
   }
+  ctx.strokeStyle = "rgba(213, 220, 231, 0.34)";
+  ctx.beginPath();
+  ctx.moveTo(area.left, area.top);
+  ctx.lineTo(area.left, area.bottom);
+  ctx.lineTo(area.right, area.bottom);
+  ctx.stroke();
+}
+
+function niceTick(value) {
+  if (!Number.isFinite(value)) return "-";
+  if (Math.abs(value) >= 100) return value.toFixed(0);
+  if (Math.abs(value) >= 10) return value.toFixed(1);
+  return value.toFixed(2);
 }
 
 function createSparkline(canvas, options = {}) {
@@ -1185,21 +1527,32 @@ function createSparkline(canvas, options = {}) {
   const maxSamples = options.maxSamples || 60;
   const stroke = options.stroke || "#20c997";
   const fill = options.fill || "rgba(32, 201, 151, 0.12)";
+  let axisMeta = {};
 
   function draw() {
     if (!canvas) return;
     const { ctx, width, height } = prepareCanvas(canvas);
     ctx.clearRect(0, 0, width, height);
-    drawGrid(ctx, width, height);
 
     const points = values.length ? values : [0];
-    const max = Math.max(0.001, ...points);
-    const left = 14;
-    const right = width - 14;
-    const top = 12;
-    const bottom = height - 18;
+    const max = options.fixedMax || Math.max(0.001, ...points);
+    const left = 42;
+    const right = width - 16;
+    const top = 18;
+    const bottom = height - 32;
     const plotWidth = Math.max(1, right - left);
     const plotHeight = Math.max(1, bottom - top);
+    drawGrid(ctx, width, height, { left, right, top, bottom }, [niceTick(max), niceTick(max * 0.67), niceTick(max * 0.33), "0"]);
+
+    ctx.fillStyle = "rgba(213, 220, 231, 0.8)";
+    ctx.font = "11px Inter, system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(options.yLabel || "", left, 3);
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(axisMeta.firstLabel || options.xLabel || "Live", left, height - 6);
+    ctx.textAlign = "right";
+    ctx.fillText(axisMeta.lastLabel || "jetzt", right, height - 6);
 
     ctx.beginPath();
     points.forEach((value, index) => {
@@ -1225,6 +1578,12 @@ function createSparkline(canvas, options = {}) {
     push(value) {
       values.push(Number.isFinite(value) ? value : 0);
       while (values.length > maxSamples) values.shift();
+      axisMeta = {};
+      draw();
+    },
+    setSeries(nextValues, nextMeta = {}) {
+      values.splice(0, values.length, ...(nextValues || []).map((value) => (Number.isFinite(value) ? value : 0)));
+      axisMeta = nextMeta;
       draw();
     },
     draw,
@@ -1241,17 +1600,24 @@ function createBarChart(canvas, options = {}) {
     if (!canvas) return;
     const { ctx, width, height } = prepareCanvas(canvas);
     ctx.clearRect(0, 0, width, height);
-    drawGrid(ctx, width, height);
 
     const source = values.length ? values : [0];
     const maxAbs = config.max || Math.max(0.001, ...source.map((value) => Math.abs(value)));
-    const left = 16;
+    const left = 42;
     const right = width - 16;
-    const top = 12;
-    const bottom = height - 22;
+    const top = 18;
+    const bottom = height - 34;
     const zero = config.invert ? bottom : top + (bottom - top) / 2;
     const gap = 8;
     const barWidth = Math.max(10, (right - left - gap * (source.length - 1)) / source.length);
+    drawGrid(ctx, width, height, { left, right, top, bottom }, config.invert ? [niceTick(maxAbs), niceTick(maxAbs * 0.67), niceTick(maxAbs * 0.33), "0"] : [niceTick(maxAbs), niceTick(maxAbs * 0.33), niceTick(-maxAbs * 0.33), niceTick(-maxAbs)]);
+
+    ctx.fillStyle = "rgba(213, 220, 231, 0.8)";
+    ctx.font = "11px Inter, system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(config.yLabel || options.yLabel || "", left, 3);
+    ctx.textBaseline = "alphabetic";
 
     source.forEach((value, index) => {
       const x = left + index * (barWidth + gap);
@@ -1262,6 +1628,12 @@ function createBarChart(canvas, options = {}) {
       ctx.globalAlpha = config.invert ? Math.max(0.25, 1 - normalized * 0.7) : 0.9;
       ctx.fillRect(x, y, barWidth, barHeight);
       ctx.globalAlpha = 1;
+      const label = config.labels?.[index] || options.labels?.[index];
+      if (label) {
+        ctx.fillStyle = "rgba(213, 220, 231, 0.72)";
+        ctx.textAlign = "center";
+        ctx.fillText(label, x + barWidth / 2, height - 7);
+      }
     });
   }
 
