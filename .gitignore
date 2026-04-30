@@ -7,3 +7,12 @@ playwright-report/
 .codex
 data/
 .env
+
+# ROS/colcon build output and local runtime logs
+log/
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Extracted vendor archive; the zip is tracked separately.
+ABB/abb_ros2/abb_rws_client/
