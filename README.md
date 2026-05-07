@@ -1,19 +1,19 @@
 # SMAN ABB GoFa ROS2 Dashboard
 
-Web-Dashboard fuer ROS2-Daten eines ABB GoFa Roboters. Die App laeuft in Docker, liest ROS2-Topics im Container und streamt die Daten per WebSocket in den Browser.
+Web-Dashboard für ROS2-Daten eines ABB GoFa Roboters. Die App läuft in Docker, liest ROS2-Topics im Container und streamt die Daten per WebSocket in den Browser.
 
 ## Funktionen
 
-- Live-Dashboard fuer ABB GoFa / CRB 15000 mit Joint States, TCP-Pose, EGM-Zustand und 3D Digital Twin
-- Zusaetzliches GoFa HMI unter `/hmi` mit Tablet-/Quest-orientierter Kachelansicht
-- Echte achsweise HMI-Bewegung ueber `/gofa_arm_controller/follow_joint_trajectory`
+- Live-Dashboard für ABB GoFa / CRB 15000 mit Joint States, TCP-Pose, EGM-Zustand und 3D Digital Twin
+- Zusätzliches GoFa HMI unter `/hmi` mit Tablet-/Quest-orientierter Kachelansicht
+- Echte achsweise HMI-Bewegung über `/gofa_arm_controller/follow_joint_trajectory`
 - HMI Speed Control mit Achs-Gauges, TCP-Velocity- und Payload-Bedienfeldern
-- HMI HRC Safety Panel fuer Sichtbarkeit, Transparenz, Zonen-Manipulation und Robot-Visibility
-- Automatische ROS2-Topic-Discovery ueber die Host-Bridge
+- HMI HRC Safety Panel für Sichtbarkeit, Transparenz, Zonen-Manipulation und Robot-Visibility
+- Automatische ROS2-Topic-Discovery über die Host-Bridge
 - Developer-Ansicht mit Topic-Freshness, Paketfluss und gefilterter JSON-Vorschau
 - Maintenance-Ansicht mit persistierten Trends, Zeitfiltern und Event-Timeline
 - PostgreSQL-Datenbank als Docker-Service, SQLite als lokaler Fallback
-- Mail-Benachrichtigungen fuer kritische Events
+- Mail-Benachrichtigungen für kritische Events
 
 ## Start mit Docker
 
@@ -22,19 +22,19 @@ cd ~/SMAN
 docker compose up -d --build --force-recreate
 ```
 
-Dann im Browser oeffnen:
+Dann im Browser öffnen:
 
 ```text
 http://localhost:8080
 ```
 
-GoFa HMI oeffnen:
+GoFa HMI öffnen:
 
 ```text
 http://localhost:8080/hmi
 ```
 
-Der Container enthaelt Backend, Frontend, ROS2-Workspace und Dashboard-Assets im Image. Nach Codeaenderungen an `backend/`, `frontend/`, `tools/`, `ABB/` oder `ros2_ws/src/` immer neu bauen:
+Der Container enthält Backend, Frontend, ROS2-Workspace und Dashboard-Assets im Image. Nach Codeänderungen an `backend/`, `frontend/`, `tools/`, `ABB/` oder `ros2_ws/src/` immer neu bauen:
 
 ```bash
 docker compose build sman-gofa-dashboard
@@ -48,7 +48,7 @@ docker compose logs -f sman-gofa-dashboard
 ```
 
 Persistente Dashboard-Daten liegen jetzt im Docker-Service `sman-dashboard-db` (PostgreSQL) im Volume `sman-dashboard-db`.
-Der Dashboard-Container verbindet sich standardmaessig ueber:
+Der Dashboard-Container verbindet sich standardmäßig über:
 
 ```text
 postgresql://sman:sman@127.0.0.1:55433/sman
@@ -56,26 +56,26 @@ postgresql://sman:sman@127.0.0.1:55433/sman
 
 Falls `SMAN_DATABASE_URL` nicht gesetzt ist, nutzt das Backend als Fallback weiterhin SQLite unter `data/sman_dashboard.sqlite3`.
 
-Die Datei `.env` wird von Docker Compose fuer lokale Zugangsdaten gelesen, aber nicht ins Image kopiert.
+Die Datei `.env` wird von Docker Compose für lokale Zugangsdaten gelesen, aber nicht ins Image kopiert.
 
 ## GoFa HMI
 
-Das GoFa HMI ist ein Addon zum bestehenden Dashboard. Das normale Dashboard bleibt unter `/` verfuegbar, das HMI liegt unter:
+Das GoFa HMI ist ein Addon zum bestehenden Dashboard. Das normale Dashboard bleibt unter `/` verfügbar, das HMI liegt unter:
 
 ```text
 http://localhost:8080/hmi
 ```
 
-Die HMI-Oberflaeche ist fuer Tablet-Bedienung ausgelegt und gleichzeitig als Basis fuer Unity/Meta Quest 3 vorbereitet:
+Die HMI-Oberfläche ist für Tablet-Bedienung ausgelegt und gleichzeitig als Basis für Unity/Meta Quest 3 vorbereitet:
 
-- grosse Kacheln fuer Roboter, Speed Control, HRC Safety, User Dashboard, Maintenance und Status
-- optionaler transparenter Modus fuer MR/WebView-Overlays
-- achsweises Hold-to-jog fuer `J1` bis `J6`
+- große Kacheln für Roboter, Speed Control, HRC Safety, User Dashboard, Maintenance und Status
+- optionaler transparenter Modus für MR/WebView-Overlays
+- achsweises Hold-to-jog für `J1` bis `J6`
 - Stop-Buttons in den Bedienpanels
-- Home-Funktion ueber `Home anfahren`
+- Home-Funktion über `Home anfahren`
 - Live-Achspositionen und Speed-Gauges
 
-Die echten Bewegungsbefehle laufen serverseitig ueber den ROS2 Action-Server:
+Die echten Bewegungsbefehle laufen serverseitig über den ROS2 Action-Server:
 
 ```text
 /gofa_arm_controller/follow_joint_trajectory
@@ -91,11 +91,11 @@ POST /api/hmi/jog/stop
 POST /api/hmi/home
 ```
 
-Die HMI begrenzt die Geschwindigkeitsauswahl standardmaessig auf `2%` bis `30%`. Die Weboberflaeche sendet nur Bedienwuensche; die serverseitige HMI-Logik berechnet daraus kleine `FollowJointTrajectory`-Ziele.
+Die HMI begrenzt die Geschwindigkeitsauswahl standardmäßig auf `2%` bis `30%`. Die Weboberfläche sendet nur Bedienwünsche; die serverseitige HMI-Logik berechnet daraus kleine `FollowJointTrajectory`-Ziele.
 
 ## Datenbank und History
 
-Der Compose-Stack startet standardmaessig:
+Der Compose-Stack startet standardmäßig:
 
 - `sman-dashboard-db`: PostgreSQL auf `127.0.0.1:55433`
 - `sman-gofa-dashboard`: FastAPI, Frontend und ROS2-Workspace
@@ -109,7 +109,7 @@ GET  /api/history/series?window=1h|24h|7d|30d|90d
 POST /api/ingest
 ```
 
-Die Graphen im Dashboard koennen zwischen `Live`, `Letzte Stunde`, `24h`, `7 Tage` und `30 Tage` umgeschaltet werden. Im Live-Modus werden WebSocket-Daten direkt angezeigt; in den historischen Fenstern werden aggregierte Daten aus PostgreSQL geladen.
+Die Graphen im Dashboard können zwischen `Live`, `Letzte Stunde`, `24h`, `7 Tage` und `30 Tage` umgeschaltet werden. Im Live-Modus werden WebSocket-Daten direkt angezeigt; in den historischen Fenstern werden aggregierte Daten aus PostgreSQL geladen.
 
 Hinweis: Achsmomente/Effort werden nur angezeigt, wenn der Roboter oder ein ROS2-Topic echte numerische Effort-Werte publiziert. Wenn die ABB-Schnittstelle leere Arrays oder `NaN` liefert, blendet das Dashboard Momentwerte aus.
 
@@ -143,7 +143,7 @@ Die abonnierten Topics stehen in `docker-compose.yml` unter `ROS_TOPICS`. Standa
 ]
 ```
 
-Unterstuetzte Message-Typen:
+Unterstützte Message-Typen:
 
 - `sensor_msgs/msg/JointState`
 - `tf2_msgs/msg/TFMessage`
@@ -164,7 +164,7 @@ In einem ROS2-Terminal kann man testweise Joint States senden:
 ros2 topic pub /joint_states sensor_msgs/msg/JointState "{name: ['joint_1','joint_2','joint_3','joint_4','joint_5','joint_6'], position: [0.1, -0.2, 0.4, 1.0, -0.7, 0.2]}"
 ```
 
-Wenn echte ABB-GoFa-Topics andere Namen oder Typen verwenden, die Eintraege in `ROS_TOPICS` entsprechend anpassen.
+Wenn echte ABB-GoFa-Topics andere Namen oder Typen verwenden, die Einträge in `ROS_TOPICS` entsprechend anpassen.
 
 ## ROS2-Overlay vorbereiten
 
@@ -189,9 +189,9 @@ Falls RViz/MoveIt-Visualisierungstools fehlen, installieren:
 sudo apt-get install -y ros-jazzy-rviz-visual-tools
 ```
 
-## Dashboard-Bridge fuer ROS-Topics
+## Dashboard-Bridge für ROS-Topics
 
-Wenn das Dashboard unter `http://localhost:8080` laeuft, kann ein lokales ROS2-Terminal die ROS-Topics an die Web-App weiterleiten:
+Wenn das Dashboard unter `http://localhost:8080` läuft, kann ein lokales ROS2-Terminal die ROS-Topics an die Web-App weiterleiten:
 
 ```bash
 cd ~/SMAN
@@ -200,7 +200,7 @@ source ~/SMAN/ros2_ws/install/setup.bash
 ./tools/ros_joint_state_dashboard_bridge.py
 ```
 
-Die Bridge entdeckt standardmaessig alle importierbaren ROS-Topics und sendet sie an:
+Die Bridge entdeckt standardmäßig alle importierbaren ROS-Topics und sendet sie an:
 
 ```text
 http://127.0.0.1:8080/api/ingest
@@ -218,14 +218,14 @@ export SMAN_BRIDGE_DENYLIST=/parameter_events,/rosout
 setsid ./tools/ros_joint_state_dashboard_bridge.py </dev/null >/tmp/sman-ros-topic-bridge.log 2>&1 &
 ```
 
-Pruefen:
+Prüfen:
 
 ```bash
 ps -ef | rg 'ros_joint_state_dashboard_bridge|sman_dashboard_ros_topic_bridge'
 tail -f /tmp/sman-ros-topic-bridge.log
 ```
 
-Nuetzliche Optionen:
+Nützliche Optionen:
 
 ```bash
 # Nur vorkonfigurierte Topics weiterleiten, keine Auto-Discovery:
@@ -254,8 +254,8 @@ Die angepasste ABB-Hardware-Interface-Konfiguration kann EGM-Daten als ROS2-Topi
 Das Dashboard bevorzugt echte Feedback-Daten:
 
 - Joint-Anzeige und Digital Twin nutzen `/egm/feedback_joint_states`, wenn vorhanden, sonst `/joint_states`.
-- TCP-Anzeige nutzt `/egm/feedback_pose`, wenn frisch, sonst eine einfache Joint-basierte Schaetzung.
-- Leere EGM-Rohpakete wie `channels: []` loeschen die Controller-State-Anzeige nicht.
+- TCP-Anzeige nutzt `/egm/feedback_pose`, wenn frisch, sonst eine einfache Joint-basierte Schätzung.
+- Leere EGM-Rohpakete wie `channels: []` löschen die Controller-State-Anzeige nicht.
 - Joint-Namen werden im UI als `Joint 1` bis `Joint 6` angezeigt; die originalen ROS-Namen bleiben im Payload als `raw_names` erhalten.
 
 ## Morgen-Checkliste: Wieder mit dem Roboter verbinden
@@ -281,7 +281,7 @@ sudo ip addr add 192.168.125.99/24 dev enx806d97057607
 sudo ip route replace 192.168.125.0/24 dev enx806d97057607 src 192.168.125.99
 ```
 
-Dann pruefen:
+Dann prüfen:
 
 ```bash
 ip addr show enx806d97057607
@@ -297,7 +297,7 @@ Wichtig bei `ip route get`:
 
 ### 2. Dashboard ohne direkten EGM-Zugriff starten
 
-Damit MoveIt den echten Roboter ueber EGM steuern kann, darf das Dashboard den UDP-Port `6511` nicht selbst belegen:
+Damit MoveIt den echten Roboter über EGM steuern kann, darf das Dashboard den UDP-Port `6511` nicht selbst belegen:
 
 ```bash
 cd ~/SMAN
@@ -336,7 +336,7 @@ Im Log muss im Erfolgsfall erscheinen:
 ros2_control hardware interface was successfully started!
 ```
 
-Danach pruefen:
+Danach prüfen:
 
 ```bash
 ros2 control list_controllers
@@ -370,21 +370,21 @@ Forwarding /joint_states (sensor_msgs/msg/JointState)
 Forwarded 1 /joint_states samples
 ```
 
-Diese Bridge muss waehrend des Betriebs offen bleiben. Wenn sie mit `Ctrl+C` beendet wird, hat das Dashboard keine Live-Daten mehr.
+Diese Bridge muss während des Betriebs offen bleiben. Wenn sie mit `Ctrl+C` beendet wird, hat das Dashboard keine Live-Daten mehr.
 
 ### 5. Was gleichzeitig geht
 
 Diese Kombination funktioniert gleichzeitig:
 
-- MoveIt / ABB-Treiber steuert den echten Roboter ueber EGM
-- Dashboard zeigt live ueber ROS `/joint_states`
+- MoveIt / ABB-Treiber steuert den echten Roboter über EGM
+- Dashboard zeigt live über ROS `/joint_states`
 
 Nicht gleichzeitig auf demselben Port gedacht ist:
 
 - Dashboard mit `EGM_ENABLE=1`
 - MoveIt / ABB-Treiber mit echtem EGM
 
-Darum fuer den echten Roboterbetrieb immer:
+Darum für den echten Roboterbetrieb immer:
 
 ```text
 EGM_ENABLE=0
@@ -392,7 +392,7 @@ EGM_ENABLE=0
 
 ### 6. Wenn `Not connected to robot...` erscheint
 
-Dann bekommt `ros2_control_node` keine EGM-Pakete vom Roboter. Pruefen:
+Dann bekommt `ros2_control_node` keine EGM-Pakete vom Roboter. Prüfen:
 
 ```bash
 sudo timeout 5 tcpdump -ni enx806d97057607 'host 192.168.125.1 and udp port 6511'
@@ -412,7 +412,7 @@ Wenn nichts kommt:
 
 ### 7. Wenn Dashboard `Warte auf ROS2-Daten` zeigt
 
-Dann zuerst pruefen, ob die Bridge laeuft und wirklich Samples schickt.
+Dann zuerst prüfen, ob die Bridge läuft und wirklich Samples schickt.
 
 Test des Dashboard-Ingests:
 
@@ -438,13 +438,13 @@ Am einfachsten immer mit drei Terminals arbeiten:
 2. ABB / MoveIt / RViz
 3. Dashboard-Bridge
 
-Die Terminals 2 und 3 bleiben normalerweise waehrend des Betriebs offen.
+Die Terminals 2 und 3 bleiben normalerweise während des Betriebs offen.
 
 ## MoveIt und RViz
 
 ### Demo ohne Roboter
 
-Der Demo-Launch startet eine vollstaendige MoveIt/RViz-Umgebung mit Fake-Hardware. Hier sollte der 6D-Gizmo am Endeffektor sichtbar sein:
+Der Demo-Launch startet eine vollständige MoveIt/RViz-Umgebung mit Fake-Hardware. Hier sollte der 6D-Gizmo am Endeffektor sichtbar sein:
 
 ```bash
 cd ~/SMAN
@@ -453,7 +453,7 @@ source ~/SMAN/ros2_ws/install/setup.bash
 ros2 launch abb_crb15000_moveit demo.launch.py
 ```
 
-In RViz oben das Tool `Interact` auswaehlen. Im MotionPlanning-Panel die Planning Group `manipulator` verwenden, dann den Gizmo am `tool0`/Endeffektor verschieben und `Plan` oder `Plan & Execute` nutzen.
+In RViz oben das Tool `Interact` auswählen. Im MotionPlanning-Panel die Planning Group `manipulator` verwenden, dann den Gizmo am `tool0`/Endeffektor verschieben und `Plan` oder `Plan & Execute` nutzen.
 
 ### Complete-Launch ohne Roboter
 
@@ -466,11 +466,11 @@ source ~/SMAN/ros2_ws/install/setup.bash
 ros2 launch abb_bringup crb15000_complete.launch.py use_fake_hardware:=true
 ```
 
-Das ist der richtige Modus fuer Offline-Tests mit MoveIt-Gizmo, RViz und Dashboard.
+Das ist der richtige Modus für Offline-Tests mit MoveIt-Gizmo, RViz und Dashboard.
 
 ### Complete-Launch mit echtem Roboter
 
-Mit Roboter/RWS-Verbindung laeuft der Complete-Launch standardmaessig gegen die echte Hardware:
+Mit Roboter/RWS-Verbindung läuft der Complete-Launch standardmäßig gegen die echte Hardware:
 
 ```bash
 cd ~/SMAN
@@ -493,13 +493,13 @@ Launch-Argumente anzeigen:
 ros2 launch abb_bringup crb15000_complete.launch.py --show-args
 ```
 
-Laufende ROS2-Topics pruefen:
+Laufende ROS2-Topics prüfen:
 
 ```bash
 ros2 topic list --no-daemon
 ```
 
-Wichtige Prozesse pruefen:
+Wichtige Prozesse prüfen:
 
 ```bash
 ps -ef | rg 'rviz2|move_group|ros2_control_node|robot_state_publisher'
@@ -509,7 +509,7 @@ Wenn der Gizmo im `demo.launch.py` sichtbar ist, aber im `crb15000_complete.laun
 
 ## Digital Twin
 
-Der Digital Twin laedt lokal die Visual-Meshes des ROS-Industrial Pakets `abb_crb15000_support` fuer den ABB GoFa CRB 15000-5/0.95:
+Der Digital Twin lädt lokal die Visual-Meshes des ROS-Industrial Pakets `abb_crb15000_support` für den ABB GoFa CRB 15000-5/0.95:
 
 ```text
 frontend/robot/abb_crb15000_support/
@@ -527,16 +527,16 @@ Die Asset-Lizenz liegt lokal unter:
 frontend/robot/abb_crb15000_support/LICENSE
 ```
 
-Die App verwendet die Joint-Kette aus `crb15000_5_95_macro.xacro` und koppelt sie an `/joint_states`. Wenn die Mesh-Dateien nicht geladen werden koennen, bleibt automatisch das vereinfachte prozedurale Modell aktiv.
+Die App verwendet die Joint-Kette aus `crb15000_5_95_macro.xacro` und koppelt sie an `/joint_states`. Wenn die Mesh-Dateien nicht geladen werden können, bleibt automatisch das vereinfachte prozedurale Modell aktiv.
 
 ## Mail-Benachrichtigungen
 
-Das Dashboard kann kritische Alarme sofort als Mail senden und im Maintenance-Tab eine Testmail ausloesen.
-Die Empfaenger werden im Dashboard gespeichert; SMTP-Zugangsdaten bleiben in `.env`/Docker-Umgebung.
+Das Dashboard kann kritische Alarme sofort als Mail senden und im Maintenance-Tab eine Testmail auslösen.
+Die Empfänger werden im Dashboard gespeichert; SMTP-Zugangsdaten bleiben in `.env`/Docker-Umgebung.
 
 ### Option A: Gmail SMTP
 
-Geeignet fuer schnelle Tests mit einem eigenen Gmail-Konto. In Google muss die 2-Schritt-Bestaetigung aktiv sein, danach ein App-Passwort erstellen.
+Geeignet für schnelle Tests mit einem eigenen Gmail-Konto. In Google muss die 2-Schritt-Bestätigung aktiv sein, danach ein App-Passwort erstellen.
 
 ```bash
 cp .env.example .env
@@ -551,12 +551,12 @@ SMAN_SMTP_SECURITY=starttls
 SMAN_SMTP_USER=dein.name@gmail.com
 SMAN_SMTP_PASSWORD=dein-app-passwort
 SMAN_MAIL_FROM=dein.name@gmail.com
-SMAN_MAIL_RECIPIENTS=deine.empfaengeradresse@example.com
+SMAN_MAIL_RECIPIENTS=deine.adresse@example.com
 ```
 
 ### Option B: Brevo SMTP
 
-Geeignet fuer kostenlose Transactional-Mails mit eigenem/verifiziertem Absender.
+Geeignet für kostenlose Transactional-Mails mit eigenem/verifiziertem Absender.
 
 ```text
 SMAN_SMTP_HOST=smtp-relay.brevo.com
@@ -565,7 +565,7 @@ SMAN_SMTP_SECURITY=starttls
 SMAN_SMTP_USER=dein-brevo-smtp-login
 SMAN_SMTP_PASSWORD=dein-brevo-smtp-key
 SMAN_MAIL_FROM=verifizierter-absender@example.com
-SMAN_MAIL_RECIPIENTS=deine.empfaengeradresse@example.com
+SMAN_MAIL_RECIPIENTS=deine.adresse@example.com
 ```
 
 Danach Dashboard neu erstellen/starten:
@@ -577,5 +577,5 @@ docker compose up -d --build --force-recreate
 Im Dashboard:
 
 ```text
-Maintenance -> Benachrichtigungen -> Empfaenger setzen -> Speichern -> Testmail
+Maintenance -> Benachrichtigungen -> Empfänger setzen -> Speichern -> Testmail
 ```
