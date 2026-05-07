@@ -30,7 +30,7 @@ services:
     environment:
       ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-0}"
       RMW_IMPLEMENTATION: "${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
-      EGM_ENABLE: "${EGM_ENABLE:-1}"
+      EGM_ENABLE: "${EGM_ENABLE:-0}"
       EGM_HOST: "${EGM_HOST:-0.0.0.0}"
       EGM_PORT: "${EGM_PORT:-6511}"
       SMAN_DATA_DIR: "${SMAN_DATA_DIR:-/app/data}"

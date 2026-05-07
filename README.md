@@ -93,6 +93,42 @@ POST /api/hmi/home
 
 Die HMI begrenzt die Geschwindigkeitsauswahl standardmäßig auf `2%` bis `30%`. Die Weboberfläche sendet nur Bedienwünsche; die serverseitige HMI-Logik berechnet daraus kleine `FollowJointTrajectory`-Ziele.
 
+## Gleichzeitiger Betrieb mit EGM und ABB-Steuerung
+
+Für den echten Roboterbetrieb ist das Standard-Setup so ausgelegt, dass alles gleichzeitig laufen kann:
+
+```text
+GoFa HMI / Dashboard
+  -> FastAPI / ROS2 Action Client
+  -> /gofa_arm_controller/follow_joint_trajectory
+  -> ros2_control / ABB-Treiber
+  -> EGM
+  -> ABB-Steuerung
+  -> Roboter
+```
+
+Wichtig: Das Dashboard belegt den EGM-UDP-Port `6511` standardmäßig nicht selbst. Dadurch kann der ABB-Treiber beziehungsweise `ros2_control` den EGM-Port verwenden, während Dashboard und HMI parallel über ROS2-Daten und ROS2-Actions arbeiten.
+
+Der Compose-Default ist deshalb:
+
+```text
+EGM_ENABLE=0
+```
+
+Damit laufen parallel:
+
+- `/` als normales Dashboard
+- `/hmi` als GoFa HMI
+- MoveIt / `ros2_control`
+- ABB-Steuerung über EGM
+- Live-Anzeige über `/joint_states` und automatisch entdeckte ROS2-Topics
+
+Nur für reine Dashboard-Tests ohne MoveIt/ABB-Treiber kann der direkte EGM-UDP-Listener wieder aktiviert werden:
+
+```bash
+EGM_ENABLE=1 docker compose up -d --build --force-recreate
+```
+
 ## Datenbank und History
 
 Der Compose-Stack startet standardmäßig:
@@ -297,11 +333,11 @@ Wichtig bei `ip route get`:
 
 ### 2. Dashboard ohne direkten EGM-Zugriff starten
 
-Damit MoveIt den echten Roboter über EGM steuern kann, darf das Dashboard den UDP-Port `6511` nicht selbst belegen:
+Damit MoveIt den echten Roboter über EGM steuern kann, darf das Dashboard den UDP-Port `6511` nicht selbst belegen. Das ist inzwischen der Compose-Default:
 
 ```bash
 cd ~/SMAN
-EGM_ENABLE=0 docker compose up -d --build --force-recreate
+docker compose up -d --build --force-recreate
 ```
 
 Dashboard im Browser:
