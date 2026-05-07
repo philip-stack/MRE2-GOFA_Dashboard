@@ -57,7 +57,7 @@ function setRobotFresh(isFresh, ageSec = null) {
     return;
   }
 
-  setConnection(false, state.socketOnline ? "Kein Roboter" : "Dashboard offline");
+  setConnection(false, state.socketOnline ? "Offline" : "Dashboard offline");
   readyValue.textContent = "wartet";
   rateValue.textContent = "0.0 Hz";
   if (Number.isFinite(ageSec)) {
