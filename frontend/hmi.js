@@ -22,9 +22,11 @@ const tcpVelocityRange = document.getElementById("tcpVelocityRange");
 const tcpVelocityValue = document.getElementById("tcpVelocityValue");
 const payloadRange = document.getElementById("payloadRange");
 const payloadValue = document.getElementById("payloadValue");
+const ROBOT_STALE_AFTER_SEC = 2.5;
 
 const state = {
   socket: null,
+  socketOnline: false,
   jointPositions: null,
   previousJointPositions: null,
   previousJointAt: null,
@@ -46,6 +48,21 @@ function setConnection(online, label) {
   connectionPill.classList.toggle("online", online);
   connectionPill.classList.toggle("offline", !online);
   connectionPill.querySelector("strong").textContent = label;
+}
+
+function setRobotFresh(isFresh, ageSec = null) {
+  if (isFresh) {
+    setConnection(true, "Roboter online");
+    readyValue.textContent = "bereit";
+    return;
+  }
+
+  setConnection(false, state.socketOnline ? "Kein Roboter" : "Dashboard offline");
+  readyValue.textContent = "wartet";
+  rateValue.textContent = "0.0 Hz";
+  if (Number.isFinite(ageSec)) {
+    lastUpdateValue.textContent = `Letzte Roboterdaten: ${formatNumber(ageSec, 1)} s`;
+  }
 }
 
 function currentSpeed() {
@@ -141,6 +158,10 @@ function handlePayload(payload) {
 
   if (payload.kind === "status") {
     const topics = payload.topics || [];
+    const jointTopic = topics.find((topic) => topic.name === "/joint_states" || topic.name === "/egm/feedback_joint_states");
+    const age = Number(jointTopic?.age_sec);
+    setRobotFresh(Number.isFinite(age) && age <= ROBOT_STALE_AFTER_SEC, age);
+
     topicList.innerHTML = "";
     topics.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((topic) => {
       const item = document.createElement("div");
@@ -170,7 +191,7 @@ function handlePayload(payload) {
     state.previousJointAt = payload.received_at;
     state.jointPositions = nextPositions;
     state.lastJointAt = payload.received_at;
-    setConnection(true, "Online");
+    setRobotFresh(true);
     readyValue.textContent = "bereit";
     updateRate(payload.received_at);
     renderJoints();
@@ -188,7 +209,9 @@ function connectSocket() {
   state.socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
 
   state.socket.addEventListener("open", () => {
-    setConnection(true, "Online");
+    state.socketOnline = true;
+    commandState.textContent = "Dashboard verbunden";
+    setRobotFresh(false);
   });
 
   state.socket.addEventListener("message", (event) => {
@@ -200,7 +223,8 @@ function connectSocket() {
   });
 
   state.socket.addEventListener("close", () => {
-    setConnection(false, "Offline");
+    state.socketOnline = false;
+    setRobotFresh(false);
     window.clearTimeout(state.reconnectTimer);
     state.reconnectTimer = window.setTimeout(connectSocket, 1200);
   });
