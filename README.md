@@ -5,6 +5,10 @@ Web-Dashboard fuer ROS2-Daten eines ABB GoFa Roboters. Die App laeuft in Docker,
 ## Funktionen
 
 - Live-Dashboard fuer ABB GoFa / CRB 15000 mit Joint States, TCP-Pose, EGM-Zustand und 3D Digital Twin
+- Zusaetzliches GoFa HMI unter `/hmi` mit Tablet-/Quest-orientierter Kachelansicht
+- Echte achsweise HMI-Bewegung ueber `/gofa_arm_controller/follow_joint_trajectory`
+- HMI Speed Control mit Achs-Gauges, TCP-Velocity- und Payload-Bedienfeldern
+- HMI HRC Safety Panel fuer Sichtbarkeit, Transparenz, Zonen-Manipulation und Robot-Visibility
 - Automatische ROS2-Topic-Discovery ueber die Host-Bridge
 - Developer-Ansicht mit Topic-Freshness, Paketfluss und gefilterter JSON-Vorschau
 - Maintenance-Ansicht mit persistierten Trends, Zeitfiltern und Event-Timeline
@@ -22,6 +26,12 @@ Dann im Browser oeffnen:
 
 ```text
 http://localhost:8080
+```
+
+GoFa HMI oeffnen:
+
+```text
+http://localhost:8080/hmi
 ```
 
 Der Container enthaelt Backend, Frontend, ROS2-Workspace und Dashboard-Assets im Image. Nach Codeaenderungen an `backend/`, `frontend/`, `tools/`, `ABB/` oder `ros2_ws/src/` immer neu bauen:
@@ -47,6 +57,41 @@ postgresql://sman:sman@127.0.0.1:55433/sman
 Falls `SMAN_DATABASE_URL` nicht gesetzt ist, nutzt das Backend als Fallback weiterhin SQLite unter `data/sman_dashboard.sqlite3`.
 
 Die Datei `.env` wird von Docker Compose fuer lokale Zugangsdaten gelesen, aber nicht ins Image kopiert.
+
+## GoFa HMI
+
+Das GoFa HMI ist ein Addon zum bestehenden Dashboard. Das normale Dashboard bleibt unter `/` verfuegbar, das HMI liegt unter:
+
+```text
+http://localhost:8080/hmi
+```
+
+Die HMI-Oberflaeche ist fuer Tablet-Bedienung ausgelegt und gleichzeitig als Basis fuer Unity/Meta Quest 3 vorbereitet:
+
+- grosse Kacheln fuer Roboter, Speed Control, HRC Safety, User Dashboard, Maintenance und Status
+- optionaler transparenter Modus fuer MR/WebView-Overlays
+- achsweises Hold-to-jog fuer `J1` bis `J6`
+- Stop-Buttons in den Bedienpanels
+- Home-Funktion ueber `Home anfahren`
+- Live-Achspositionen und Speed-Gauges
+
+Die echten Bewegungsbefehle laufen serverseitig ueber den ROS2 Action-Server:
+
+```text
+/gofa_arm_controller/follow_joint_trajectory
+```
+
+Wichtige HMI-Endpunkte:
+
+```text
+GET  /api/hmi/state
+POST /api/hmi/jog/start
+POST /api/hmi/jog/heartbeat
+POST /api/hmi/jog/stop
+POST /api/hmi/home
+```
+
+Die HMI begrenzt die Geschwindigkeitsauswahl standardmaessig auf `2%` bis `30%`. Die Weboberflaeche sendet nur Bedienwuensche; die serverseitige HMI-Logik berechnet daraus kleine `FollowJointTrajectory`-Ziele.
 
 ## Datenbank und History
 

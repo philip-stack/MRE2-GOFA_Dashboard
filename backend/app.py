@@ -16,18 +16,23 @@ from pathlib import Path
 from typing import Any
 
 import rclpy
+from builtin_interfaces.msg import Duration
+from control_msgs.action import FollowJointTrajectory
 from diagnostic_msgs.msg import DiagnosticArray
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from rclpy.executors import ExternalShutdownException
+from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped, Twist
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Float32, Float64, Int32, String
 from tf2_msgs.msg import TFMessage
+from trajectory_msgs.msg import JointTrajectoryPoint
 from rosidl_runtime_py.convert import message_to_ordereddict
 from rosidl_runtime_py.utilities import get_message
 
@@ -51,6 +56,13 @@ DEFAULT_TOPICS = [
     {"name": "/tf", "type": "tf2_msgs/msg/TFMessage", "label": "TF"},
     {"name": "/diagnostics", "type": "diagnostic_msgs/msg/DiagnosticArray", "label": "Diagnostics"},
 ]
+
+HMI_JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
+HMI_JOINT_MAX_VELOCITY_RAD_S = [1.58, 1.58, 1.58, 3.14, 3.14, 3.14]
+HMI_HOME_POSITIONS_RAD = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+HMI_JOG_DURATION_SEC = 0.65
+HMI_MAX_SPEED_PERCENT = 30.0
+HMI_MIN_SPEED_PERCENT = 2.0
 
 MESSAGE_TYPES = {
     "sensor_msgs/msg/JointState": JointState,
@@ -494,6 +506,18 @@ class PayloadStore:
             "topics": topics,
             "status": self.status_payload(),
         }
+
+    def latest_joint_positions(self) -> list[float] | None:
+        with self._lock:
+            payload = self._latest_payloads.get("/joint_states")
+        data = payload.get("data") if payload else None
+        positions = data.get("positions") if isinstance(data, dict) else None
+        if not isinstance(positions, list) or len(positions) < 6:
+            return None
+        try:
+            return [float(value) for value in positions[:6]]
+        except (TypeError, ValueError):
+            return None
 
 
 class DashboardPersistence:
@@ -1222,6 +1246,130 @@ def env_flag(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).lower() not in {"0", "false", "no", "off"}
 
 
+class HmiMotionController:
+    def __init__(self, node: Node, store: PayloadStore) -> None:
+        self._node = node
+        self._store = store
+        self._client = ActionClient(node, FollowJointTrajectory, "/gofa_arm_controller/follow_joint_trajectory")
+        self._lock = threading.Lock()
+        self._active_goal_handle: Any = None
+        self._last_command: dict[str, Any] = {"mode": "idle", "updated_at": time.time()}
+
+    def state(self) -> dict[str, Any]:
+        current = self._store.latest_joint_positions()
+        with self._lock:
+            command = dict(self._last_command)
+        return {
+            "available": True,
+            "action": "/gofa_arm_controller/follow_joint_trajectory",
+            "joints": HMI_JOINT_NAMES,
+            "positions": current,
+            "command": command,
+            "limits": {
+                "min_speed_percent": HMI_MIN_SPEED_PERCENT,
+                "max_speed_percent": HMI_MAX_SPEED_PERCENT,
+                "default_speed_percent": 5,
+                "home_speed_percent": 5,
+            },
+        }
+
+    def stop(self, reason: str = "operator") -> dict[str, str]:
+        with self._lock:
+            goal_handle = self._active_goal_handle
+            self._active_goal_handle = None
+            self._last_command = {"mode": "idle", "reason": reason, "updated_at": time.time()}
+        if goal_handle is not None:
+            try:
+                goal_handle.cancel_goal_async()
+            except Exception as exc:
+                self._node.get_logger().warn(f"HMI cancel failed: {exc}")
+        return {"status": "stopping", "reason": reason}
+
+    def jog(self, axis: int, direction: int, speed_percent: float) -> dict[str, Any]:
+        if axis < 0 or axis >= len(HMI_JOINT_NAMES):
+            raise ValueError("axis must be between 0 and 5")
+        if direction not in {-1, 1}:
+            raise ValueError("direction must be -1 or 1")
+
+        current = self._require_current_positions()
+        speed = self._clamp_speed(speed_percent)
+        delta = direction * HMI_JOINT_MAX_VELOCITY_RAD_S[axis] * (speed / 100.0) * HMI_JOG_DURATION_SEC
+        target = list(current)
+        target[axis] += delta
+        self._send_goal(target, HMI_JOG_DURATION_SEC)
+        with self._lock:
+            self._last_command = {
+                "mode": "jog",
+                "axis": axis + 1,
+                "direction": direction,
+                "speed_percent": speed,
+                "duration_sec": HMI_JOG_DURATION_SEC,
+                "updated_at": time.time(),
+            }
+        return {"status": "sent", "axis": axis + 1, "speed_percent": speed, "target": target}
+
+    def home(self, speed_percent: float) -> dict[str, Any]:
+        current = self._require_current_positions()
+        speed = self._clamp_speed(speed_percent)
+        slowest_axis_time = 0.0
+        for index, (actual, target) in enumerate(zip(current, HMI_HOME_POSITIONS_RAD)):
+            velocity = max(0.02, HMI_JOINT_MAX_VELOCITY_RAD_S[index] * (speed / 100.0))
+            slowest_axis_time = max(slowest_axis_time, abs(target - actual) / velocity)
+        duration = max(4.0, slowest_axis_time)
+        self._send_goal(HMI_HOME_POSITIONS_RAD, duration)
+        with self._lock:
+            self._last_command = {
+                "mode": "home",
+                "speed_percent": speed,
+                "duration_sec": duration,
+                "updated_at": time.time(),
+            }
+        return {"status": "sent", "speed_percent": speed, "duration_sec": duration}
+
+    def _clamp_speed(self, value: float) -> float:
+        try:
+            speed = float(value)
+        except (TypeError, ValueError):
+            speed = 5.0
+        return max(HMI_MIN_SPEED_PERCENT, min(HMI_MAX_SPEED_PERCENT, speed))
+
+    def _require_current_positions(self) -> list[float]:
+        positions = self._store.latest_joint_positions()
+        if positions is None:
+            raise RuntimeError("No current /joint_states positions available")
+        return positions
+
+    def _send_goal(self, target_positions: list[float], duration_sec: float) -> None:
+        if not self._client.wait_for_server(timeout_sec=0.15):
+            raise RuntimeError("FollowJointTrajectory action server is not available")
+
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory.joint_names = list(HMI_JOINT_NAMES)
+        point = JointTrajectoryPoint()
+        point.positions = [float(value) for value in target_positions[:6]]
+        point.time_from_start = Duration(
+            sec=int(duration_sec),
+            nanosec=int((duration_sec % 1.0) * 1_000_000_000),
+        )
+        goal.trajectory.points = [point]
+
+        future = self._client.send_goal_async(goal)
+
+        def remember_goal(done_future: Any) -> None:
+            try:
+                goal_handle = done_future.result()
+            except Exception as exc:
+                self._node.get_logger().warn(f"HMI goal send failed: {exc}")
+                return
+            if not goal_handle.accepted:
+                self._node.get_logger().warn("HMI trajectory goal was rejected")
+                return
+            with self._lock:
+                self._active_goal_handle = goal_handle
+
+        future.add_done_callback(remember_goal)
+
+
 class RosTopicBridge(Node):
     def __init__(
         self,
@@ -1238,6 +1386,7 @@ class RosTopicBridge(Node):
         self._subscribed_topics: set[str] = set()
         self._discover_topics = env_flag("ROS_DISCOVER_TOPICS", "0")
         self._denylist = set(csv_env("ROS_DISCOVER_DENYLIST", "/parameter_events,/rosout"))
+        self.hmi_motion = HmiMotionController(self, store)
 
         for topic in topics:
             self._subscribe_topic(topic)
@@ -1515,6 +1664,54 @@ async def snapshot() -> dict[str, Any]:
     return STORE.snapshot_payload()
 
 
+def hmi_motion_controller() -> HmiMotionController:
+    if ROS_NODE is None:
+        raise HTTPException(status_code=503, detail="ROS bridge is not ready")
+    return ROS_NODE.hmi_motion
+
+
+@app.get("/api/hmi/state")
+async def hmi_state() -> dict[str, Any]:
+    return await asyncio.to_thread(hmi_motion_controller().state)
+
+
+@app.post("/api/hmi/jog/start")
+async def hmi_jog_start(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return await asyncio.to_thread(
+            hmi_motion_controller().jog,
+            int(payload.get("axis", -1)),
+            int(payload.get("direction", 0)),
+            float(payload.get("speed_percent", 5)),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/hmi/jog/heartbeat")
+async def hmi_jog_heartbeat(payload: dict[str, Any]) -> dict[str, Any]:
+    return await hmi_jog_start(payload)
+
+
+@app.post("/api/hmi/jog/stop")
+async def hmi_jog_stop(payload: dict[str, Any] | None = None) -> dict[str, str]:
+    reason = str((payload or {}).get("reason", "operator"))
+    return await asyncio.to_thread(hmi_motion_controller().stop, reason)
+
+
+@app.post("/api/hmi/home")
+async def hmi_home(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return await asyncio.to_thread(
+            hmi_motion_controller().home,
+            float(payload.get("speed_percent", 5)),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/api/history/summary")
 async def history_summary(window: str = "24h") -> dict[str, Any]:
     return await asyncio.to_thread(PERSISTENCE.summary, window)
@@ -1574,3 +1771,8 @@ app.mount("/assets", StaticFiles(directory="/app/frontend"), name="assets")
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse("/app/frontend/index.html")
+
+
+@app.get("/hmi")
+async def hmi() -> FileResponse:
+    return FileResponse("/app/frontend/hmi.html")

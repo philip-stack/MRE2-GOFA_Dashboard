@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GoFa HMI</title>
+    <link rel="stylesheet" href="/assets/hmi.css?v=1" />
+  </head>
+  <body>
+    <main class="hmi-shell">
+      <header class="hmi-topbar">
+        <div>
+          <p class="eyebrow">ABB GoFa</p>
+          <h1>GoFa HMI</h1>
+        </div>
+        <div class="top-actions">
+          <div class="command-pill">
+            <span id="commandState">Bereit</span>
+            <small id="lastUpdateValue">-</small>
+          </div>
+          <button class="tool-button" id="themeButton" type="button">Transparent</button>
+          <a class="tool-button" href="/">Dashboard</a>
+          <div class="connection-pill" id="connectionPill">
+            <span></span>
+            <strong>Verbinde</strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="status-strip" aria-label="Roboterstatus">
+        <article>
+          <span>Betrieb</span>
+          <strong id="readyValue">wartet</strong>
+        </article>
+        <article>
+          <span>Bewegung</span>
+          <strong id="motionValue">Idle</strong>
+        </article>
+        <article>
+          <span>Live</span>
+          <strong id="rateValue">0.0 Hz</strong>
+        </article>
+        <article>
+          <span>EGM</span>
+          <strong id="egmValue">unbekannt</strong>
+        </article>
+      </section>
+
+      <section class="tile-board" aria-label="HMI Bereiche">
+        <button class="tile active" type="button" data-panel="robotPanel">
+          <span>Roboter</span>
+          <strong>Achssteuerung</strong>
+        </button>
+        <button class="tile" type="button" data-panel="speedPanel">
+          <span>Speed</span>
+          <strong>Control</strong>
+        </button>
+        <button class="tile" type="button" data-panel="safetyPanel">
+          <span>HRC</span>
+          <strong>Safety</strong>
+        </button>
+        <a class="tile" href="/">
+          <span>User</span>
+          <strong>Dashboard</strong>
+        </a>
+        <button class="tile" type="button" data-panel="maintenancePanel">
+          <span>Service</span>
+          <strong>Maintenance</strong>
+        </button>
+        <button class="tile" type="button" data-panel="statusPanel">
+          <span>Live</span>
+          <strong>Status</strong>
+        </button>
+      </section>
+
+      <section class="panel active" id="robotPanel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Hold to jog</p>
+            <h2>Achsen bewegen</h2>
+          </div>
+          <button class="stop-button" id="stopButton" type="button">STOP</button>
+        </div>
+
+        <div class="control-grid">
+          <section class="axis-bank" id="axisBank" aria-label="Achssteuerung"></section>
+
+          <aside class="control-side">
+            <div class="field">
+              <label for="speedRange">Geschwindigkeit</label>
+              <div class="speed-row">
+                <input id="speedRange" type="range" min="2" max="30" step="1" value="5" />
+                <output id="speedValue">5%</output>
+              </div>
+              <div class="speed-presets" id="speedPresets">
+                <button type="button" data-speed="2">2%</button>
+                <button class="active" type="button" data-speed="5">5%</button>
+                <button type="button" data-speed="10">10%</button>
+                <button type="button" data-speed="20">20%</button>
+                <button type="button" data-speed="30">30%</button>
+              </div>
+            </div>
+
+            <button class="home-button" id="homeButton" type="button">Home anfahren</button>
+
+            <div class="joint-readout" id="jointReadout" aria-label="Aktuelle Achswerte"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel" id="speedPanel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Speed Control</p>
+            <h2>Achsgeschwindigkeit</h2>
+          </div>
+          <button class="stop-button" type="button" data-stop="speed">STOP</button>
+        </div>
+
+        <div class="speed-control-grid">
+          <section class="speed-gauges" id="speedGauges" aria-label="Achs-Geschwindigkeiten"></section>
+          <aside class="control-side">
+            <div class="field">
+              <label for="tcpVelocityRange">TCP Velocity</label>
+              <div class="speed-row">
+                <input id="tcpVelocityRange" type="range" min="25" max="300" step="25" value="100" />
+                <output id="tcpVelocityValue">100 mm/s</output>
+              </div>
+            </div>
+            <div class="field">
+              <label for="payloadRange">Payload</label>
+              <div class="speed-row">
+                <input id="payloadRange" type="range" min="0" max="5" step="0.1" value="0" />
+                <output id="payloadValue">0.0 kg</output>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel" id="safetyPanel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">HRC Safety</p>
+            <h2>Zonen & Sichtbarkeit</h2>
+          </div>
+          <button class="stop-button" type="button" data-stop="safety">STOP</button>
+        </div>
+
+        <div class="safety-grid">
+          <section class="safety-card">
+            <h3>Visibility</h3>
+            <label class="switch-row">
+              <input type="checkbox" id="warningZonesToggle" checked />
+              <span>Warning Zones</span>
+            </label>
+            <label class="switch-row">
+              <input type="checkbox" id="collisionZonesToggle" checked />
+              <span>Collision Zones</span>
+            </label>
+          </section>
+
+          <section class="safety-card">
+            <h3>Transparency</h3>
+            <label class="range-field">
+              <span>Warning Zones</span>
+              <input type="range" min="0" max="100" value="35" id="warningTransparency" />
+            </label>
+            <label class="range-field">
+              <span>Collision Zones</span>
+              <input type="range" min="0" max="100" value="15" id="collisionTransparency" />
+            </label>
+          </section>
+
+          <section class="safety-card">
+            <h3>Manipulation</h3>
+            <label class="switch-row">
+              <input type="checkbox" id="resizeZonesToggle" />
+              <span>Resize Zones</span>
+            </label>
+            <label class="switch-row">
+              <input type="checkbox" id="triggerZonesToggle" checked />
+              <span>Trigger Zones</span>
+            </label>
+          </section>
+
+          <section class="safety-card">
+            <h3>Robot</h3>
+            <label class="switch-row">
+              <input type="radio" name="robotVisibility" value="visible" checked />
+              <span>Robot Visible</span>
+            </label>
+            <label class="switch-row">
+              <input type="radio" name="robotVisibility" value="transparent" />
+              <span>Robot Transparent</span>
+            </label>
+          </section>
+        </div>
+      </section>
+
+      <section class="panel" id="maintenancePanel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Addon</p>
+            <h2>Maintenance</h2>
+          </div>
+          <a class="tool-button" href="/">Im Dashboard öffnen</a>
+        </div>
+        <div class="summary-grid">
+          <article><span>Health</span><strong id="healthValue">-</strong></article>
+          <article><span>Max. Speed</span><strong id="maxVelocityValue">-</strong></article>
+          <article><span>Events</span><strong id="eventsValue">-</strong></article>
+        </div>
+      </section>
+
+      <section class="panel" id="statusPanel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">ROS2</p>
+            <h2>Status</h2>
+          </div>
+        </div>
+        <div class="topic-list" id="topicList"></div>
+      </section>
+    </main>
+
+    <script src="/assets/hmi.js?v=1" defer></script>
+  </body>
+</html>
