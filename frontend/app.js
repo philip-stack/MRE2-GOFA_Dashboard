@@ -73,6 +73,7 @@ const maintenanceTimelineEl = document.getElementById("maintenanceTimeline");
 const eventCountValueEl = document.getElementById("eventCountValue");
 const mailSettingsFormEl = document.getElementById("mailSettingsForm");
 const mailRecipientsEl = document.getElementById("mailRecipients");
+const mailEnabledEl = document.getElementById("mailEnabled");
 const mailImmediateEl = document.getElementById("mailImmediate");
 const mailDailyEl = document.getElementById("mailDaily");
 const mailWeeklyEl = document.getElementById("mailWeekly");
@@ -80,6 +81,10 @@ const mailSettingsStateEl = document.getElementById("mailSettingsState");
 const mailQueueValueEl = document.getElementById("mailQueueValue");
 const mailQueueListEl = document.getElementById("mailQueueList");
 const sendTestMailEl = document.getElementById("sendTestMail");
+const manageMailRecipientsEl = document.getElementById("manageMailRecipients");
+const mailRecipientsModalEl = document.getElementById("mailRecipientsModal");
+const closeMailRecipientsEl = document.getElementById("closeMailRecipients");
+const mailRecipientListEl = document.getElementById("mailRecipientList");
 const testMailStateEl = document.getElementById("testMailState");
 const egmStateValueEl = document.getElementById("egmStateValue");
 const egmMotorsValueEl = document.getElementById("egmMotorsValue");
@@ -177,6 +182,7 @@ const state = {
   messagePreviewFilter: "important",
   lastMessagePreviewAt: 0,
   maintenanceWindow: "24h",
+  showMailRecipients: false,
   graphWindow: "live",
   maintenanceTimer: null,
 };
@@ -668,13 +674,58 @@ function renderMaintenanceSummary(summary) {
   }
 
   const settings = summary.notification_settings || {};
-  mailRecipientsEl.value = settings.recipients || "";
+  if (mailRecipientsEl && document.activeElement !== mailRecipientsEl) {
+    mailRecipientsEl.value = "";
+  }
+  if (mailEnabledEl) {
+    mailEnabledEl.checked = settings.mail_enabled !== false;
+  }
   mailImmediateEl.checked = settings.immediate_critical !== false;
   mailDailyEl.checked = settings.daily_summary !== false;
   mailWeeklyEl.checked = settings.weekly_report !== false;
+  renderMailRecipients(settings.all_recipients || []);
   mailSettingsStateEl.textContent = settings.smtp_configured
-    ? (settings.recipients ? "aktiv" : "Empfaenger fehlen")
+    ? (settings.mail_enabled === false ? "pausiert" : settings.recipients ? "aktiv" : "Empfaenger fehlen")
     : "SMTP fehlt";
+}
+
+function renderMailRecipients(recipients) {
+  if (!mailRecipientListEl) return;
+  mailRecipientListEl.innerHTML = "";
+  if (!recipients.length) {
+    mailRecipientListEl.innerHTML = '<p class="empty">Noch keine Empfaenger gespeichert.</p>';
+    return;
+  }
+  for (const recipient of recipients) {
+    const row = document.createElement("label");
+    row.className = "mail-recipient-item";
+    const email = document.createElement("strong");
+    email.textContent = recipient.email;
+    const stateLabel = document.createElement("span");
+    stateLabel.textContent = recipient.subscribed ? "abonniert" : "deaktiviert";
+    const switchBox = document.createElement("input");
+    switchBox.type = "checkbox";
+    switchBox.checked = recipient.subscribed;
+    switchBox.dataset.mailRecipient = recipient.email;
+    row.append(email, stateLabel, switchBox);
+    mailRecipientListEl.appendChild(row);
+  }
+}
+
+function openMailRecipientsModal() {
+  if (!mailRecipientsModalEl) return;
+  state.showMailRecipients = true;
+  mailRecipientsModalEl.hidden = false;
+  manageMailRecipientsEl?.setAttribute("aria-expanded", "true");
+  closeMailRecipientsEl?.focus();
+}
+
+function closeMailRecipientsModal() {
+  if (!mailRecipientsModalEl) return;
+  state.showMailRecipients = false;
+  mailRecipientsModalEl.hidden = true;
+  manageMailRecipientsEl?.setAttribute("aria-expanded", "false");
+  manageMailRecipientsEl?.focus();
 }
 
 async function refreshMaintenanceSummary() {
@@ -739,6 +790,7 @@ async function saveMailSettings(event) {
 async function persistMailSettings() {
   const body = {
     recipients: mailRecipientsEl.value,
+    mail_enabled: mailEnabledEl.checked,
     immediate_critical: mailImmediateEl.checked,
     daily_summary: mailDailyEl.checked,
     weekly_report: mailWeeklyEl.checked,
@@ -748,6 +800,23 @@ async function persistMailSettings() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      mailRecipientsEl.value = "";
+      renderMaintenanceSummary({ notification_settings: await response.json(), axis: [], events: [], mail_queue: [] });
+      await refreshMaintenanceSummary();
+    }
+  } catch {
+    mailSettingsStateEl.textContent = "Fehler";
+  }
+}
+
+async function updateMailRecipient(email, subscribed) {
+  try {
+    const response = await fetch("/api/mail/recipients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, subscribed }),
     });
     if (response.ok) {
       renderMaintenanceSummary({ notification_settings: await response.json(), axis: [], events: [], mail_queue: [] });
@@ -1458,6 +1527,25 @@ graphWindowEl?.addEventListener("click", (event) => {
 
 mailSettingsFormEl?.addEventListener("submit", saveMailSettings);
 sendTestMailEl?.addEventListener("click", sendTestMail);
+mailEnabledEl?.addEventListener("change", () => persistMailSettings());
+manageMailRecipientsEl?.addEventListener("click", openMailRecipientsModal);
+closeMailRecipientsEl?.addEventListener("click", closeMailRecipientsModal);
+mailRecipientsModalEl?.addEventListener("click", (event) => {
+  if (event.target === mailRecipientsModalEl) {
+    closeMailRecipientsModal();
+  }
+});
+mailRecipientListEl?.addEventListener("change", (event) => {
+  const input = event.target.closest("input[data-mail-recipient]");
+  if (!input) return;
+  updateMailRecipient(input.dataset.mailRecipient, input.checked);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && mailRecipientsModalEl && !mailRecipientsModalEl.hidden) {
+    closeMailRecipientsModal();
+  }
+});
 
 maintenanceTimelineEl?.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-ack-event]");

@@ -7,6 +7,7 @@ Web-Dashboard für ROS2-Daten eines ABB GoFa Roboters. Die App läuft in Docker,
 - Live-Dashboard für ABB GoFa / CRB 15000 mit Joint States, TCP-Pose, EGM-Zustand und 3D Digital Twin
 - Zusätzliches GoFa HMI unter `/hmi` mit Tablet-/Quest-orientierter Kachelansicht
 - Echte achsweise HMI-Bewegung über `/gofa_arm_controller/follow_joint_trajectory`
+- HMI Linear-/TCP-Jog über MoveIt Servo Twist-Commands für Vor/Zurück/Links/Rechts, Z und TCP-Rotation
 - HMI Speed Control mit Achs-Gauges, TCP-Velocity- und Payload-Bedienfeldern
 - HMI HRC Safety Panel für Sichtbarkeit, Transparenz, Zonen-Manipulation und Robot-Visibility
 - Automatische ROS2-Topic-Discovery über die Host-Bridge
@@ -71,6 +72,7 @@ Die HMI-Oberfläche ist für Tablet-Bedienung ausgelegt und gleichzeitig als Bas
 - große Kacheln für Roboter, Speed Control, HRC Safety, User Dashboard, Maintenance und Status
 - optionaler transparenter Modus für MR/WebView-Overlays
 - achsweises Hold-to-jog für `J1` bis `J6`
+- umschaltbarer Linear-Modus für TCP-Jog: Vor/Zurück, Links/Rechts, Z+/Z- sowie Roll/Pitch/Yaw
 - Stop-Buttons in den Bedienpanels
 - Home-Funktion über `Home anfahren`
 - Live-Achspositionen und Speed-Gauges
@@ -81,17 +83,32 @@ Die echten Bewegungsbefehle laufen serverseitig über den ROS2 Action-Server:
 /gofa_arm_controller/follow_joint_trajectory
 ```
 
+Der Linear-/TCP-Modus publiziert `geometry_msgs/msg/TwistStamped` für MoveIt Servo. Standardmäßig wird auf folgendes Topic gesendet:
+
+```text
+/servo_node/delta_twist_cmds
+```
+
+Das Topic und der Frame lassen sich über die Umgebung anpassen:
+
+```text
+SMAN_HMI_TCP_TWIST_TOPIC=/servo_node/delta_twist_cmds
+SMAN_HMI_TCP_TWIST_FRAME=base_link
+```
+
 Wichtige HMI-Endpunkte:
 
 ```text
 GET  /api/hmi/state
 POST /api/hmi/jog/start
 POST /api/hmi/jog/heartbeat
+POST /api/hmi/tcp/start
+POST /api/hmi/tcp/heartbeat
 POST /api/hmi/jog/stop
 POST /api/hmi/home
 ```
 
-Die HMI begrenzt die Geschwindigkeitsauswahl standardmäßig auf `2%` bis `30%`. Die Weboberfläche sendet nur Bedienwünsche; die serverseitige HMI-Logik berechnet daraus kleine `FollowJointTrajectory`-Ziele.
+Die HMI begrenzt die Achs-Geschwindigkeitsauswahl standardmäßig auf `2%` bis `30%`. Die Weboberfläche sendet nur Bedienwünsche; die serverseitige HMI-Logik berechnet daraus kleine `FollowJointTrajectory`-Ziele oder publiziert im Linear-Modus kleine TCP-Twist-Kommandos.
 
 ## Gleichzeitiger Betrieb mit EGM und ABB-Steuerung
 
@@ -568,7 +585,7 @@ Die App verwendet die Joint-Kette aus `crb15000_5_95_macro.xacro` und koppelt si
 ## Mail-Benachrichtigungen
 
 Das Dashboard kann kritische Alarme sofort als Mail senden und im Maintenance-Tab eine Testmail auslösen.
-Die Empfänger werden im Dashboard gespeichert; SMTP-Zugangsdaten bleiben in `.env`/Docker-Umgebung.
+Die Empfänger werden im Dashboard gespeichert; SMTP-Zugangsdaten bleiben in `.env`/Docker-Umgebung. Im Maintenance-Tab lassen sich Empfänger hinzufügen und über das Zahnrad-Popup einzeln abonnieren oder deaktivieren. Kritische Alarmmails verwenden den Betreff `ABB GoFa Alarm: ...`.
 
 ### Option A: Gmail SMTP
 
@@ -615,3 +632,5 @@ Im Dashboard:
 ```text
 Maintenance -> Benachrichtigungen -> Empfänger setzen -> Speichern -> Testmail
 ```
+
+Empfänger aus `SMAN_MAIL_RECIPIENTS` werden beim Start in die Datenbank übernommen. Danach ist die PostgreSQL-Tabelle `mail_recipients` maßgeblich; aktive Empfänger werden nur berücksichtigt, wenn `Mails abonnieren` eingeschaltet ist und der jeweilige Empfänger im Popup abonniert bleibt.

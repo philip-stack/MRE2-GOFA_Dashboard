@@ -255,6 +255,39 @@ h2 {
   margin-bottom: 14px;
 }
 
+.panel-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(88px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(10, 14, 18, 0.42);
+}
+
+.mode-switch button {
+  min-height: 48px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 950;
+}
+
+.mode-switch button.active {
+  border-color: var(--accent);
+  background: rgba(23, 195, 165, 0.12);
+  color: var(--accent);
+}
+
 .stop-button {
   min-width: 168px;
   min-height: 68px;
@@ -276,6 +309,18 @@ h2 {
 .axis-bank {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.axis-bank[hidden],
+.tcp-bank[hidden],
+.tcp-speed-field[hidden] {
+  display: none;
+}
+
+.tcp-bank {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
   gap: 12px;
 }
 
@@ -302,7 +347,8 @@ h2 {
   font-weight: 700;
 }
 
-.jog-button {
+.jog-button,
+.tcp-jog-button {
   min-height: 84px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -313,9 +359,76 @@ h2 {
   cursor: pointer;
 }
 
-.jog-button.active {
+.jog-button.active,
+.tcp-jog-button.active {
   background: var(--accent);
   color: #06110f;
+}
+
+.tcp-card {
+  min-height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 14px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.tcp-card h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.tcp-pad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(92px, 1fr));
+  grid-template-rows: repeat(3, minmax(78px, 1fr));
+  gap: 10px;
+}
+
+.tcp-pad .up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.tcp-pad .left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.tcp-pad .down {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.tcp-pad .right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.tcp-z-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tcp-rotation-grid {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) 96px 96px;
+  align-items: center;
+  gap: 10px;
+}
+
+.tcp-rotation-grid span {
+  color: var(--muted);
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.tcp-rotation-grid .tcp-jog-button {
+  min-height: 72px;
 }
 
 .control-side {
@@ -338,6 +451,14 @@ h2 {
   color: var(--muted);
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.tcp-speed-field {
+  gap: 10px;
+}
+
+.tcp-speed-field label:not(:first-child) {
+  margin-top: 12px;
 }
 
 .speed-row {
@@ -536,6 +657,7 @@ output {
   .status-strip,
   .tile-board,
   .axis-bank,
+  .tcp-bank,
   .speed-gauges,
   .speed-control-grid,
   .safety-grid,
@@ -555,5 +677,14 @@ output {
 
   .control-side {
     grid-row: 1;
+  }
+
+  .panel-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mode-switch {
+    width: 100%;
   }
 }

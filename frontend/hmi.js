@@ -4,9 +4,17 @@ const motionValue = document.getElementById("motionValue");
 const rateValue = document.getElementById("rateValue");
 const egmValue = document.getElementById("egmValue");
 const axisBank = document.getElementById("axisBank");
+const tcpJogBank = document.getElementById("tcpJogBank");
+const jogModeSwitch = document.getElementById("jogModeSwitch");
+const jogModeTitle = document.getElementById("jogModeTitle");
 const speedRange = document.getElementById("speedRange");
 const speedValue = document.getElementById("speedValue");
 const speedPresets = document.getElementById("speedPresets");
+const tcpLinearSpeedRange = document.getElementById("tcpLinearSpeedRange");
+const tcpLinearSpeedValue = document.getElementById("tcpLinearSpeedValue");
+const tcpAngularSpeedRange = document.getElementById("tcpAngularSpeedRange");
+const tcpAngularSpeedValue = document.getElementById("tcpAngularSpeedValue");
+const tcpJogSpeedField = document.getElementById("tcpJogSpeedField");
 const stopButton = document.getElementById("stopButton");
 const homeButton = document.getElementById("homeButton");
 const jointReadout = document.getElementById("jointReadout");
@@ -34,6 +42,7 @@ const state = {
   jointTimes: [],
   topics: new Map(),
   activeJog: null,
+  jogMode: "axis",
   jogTimer: null,
   reconnectTimer: null,
   lastJointAt: null,
@@ -74,6 +83,17 @@ function setSpeed(value) {
   speedValue.textContent = `${value}%`;
   speedPresets.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.speed) === Number(value));
+  });
+}
+
+function setJogMode(mode) {
+  state.jogMode = mode === "tcp" ? "tcp" : "axis";
+  axisBank.hidden = state.jogMode !== "axis";
+  tcpJogBank.hidden = state.jogMode !== "tcp";
+  tcpJogSpeedField.hidden = state.jogMode !== "tcp";
+  jogModeTitle.textContent = state.jogMode === "tcp" ? "TCP linear bewegen" : "Achsen bewegen";
+  jogModeSwitch.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.jogMode === state.jogMode);
   });
 }
 
@@ -243,18 +263,32 @@ async function postJson(url, payload = {}) {
 
 async function sendJog(endpoint = "/api/hmi/jog/start") {
   if (!state.activeJog) return;
-  const payload = {
-    axis: state.activeJog.axis,
-    direction: state.activeJog.direction,
-    speed_percent: currentSpeed(),
-  };
+  const isTcpJog = state.activeJog.mode === "tcp";
+  const payload = isTcpJog
+    ? {
+        axis: state.activeJog.axis,
+        direction: state.activeJog.direction,
+        linear_speed_mm_s: Number(tcpLinearSpeedRange.value) || 50,
+        angular_speed_deg_s: Number(tcpAngularSpeedRange.value) || 10,
+      }
+    : {
+        axis: state.activeJog.axis,
+        direction: state.activeJog.direction,
+        speed_percent: currentSpeed(),
+      };
   const data = await postJson(endpoint, payload);
-  motionValue.textContent = `J${data.axis} ${payload.direction > 0 ? "+" : "-"}`;
-  commandState.textContent = `Jog J${data.axis} bei ${data.speed_percent}%`;
+  if (isTcpJog) {
+    motionValue.textContent = `TCP ${data.axis} ${payload.direction > 0 ? "+" : "-"}`;
+    commandState.textContent = `TCP Jog ${data.axis} via ${data.twist_topic}`;
+  } else {
+    motionValue.textContent = `J${data.axis} ${payload.direction > 0 ? "+" : "-"}`;
+    commandState.textContent = `Jog J${data.axis} bei ${data.speed_percent}%`;
+  }
 }
 
 function clearJogButtons() {
   document.querySelectorAll(".jog-button.active").forEach((button) => button.classList.remove("active"));
+  document.querySelectorAll(".tcp-jog-button.active").forEach((button) => button.classList.remove("active"));
 }
 
 async function stopJog(reason = "operator") {
@@ -272,19 +306,27 @@ async function stopJog(reason = "operator") {
 }
 
 function startJog(button) {
-  const axis = Number(button.dataset.axis);
+  const isTcpJog = button.classList.contains("tcp-jog-button");
+  const axis = isTcpJog ? button.dataset.tcpAxis : Number(button.dataset.axis);
   const direction = Number(button.dataset.direction);
-  if (!Number.isInteger(axis) || ![-1, 1].includes(direction)) return;
-  state.activeJog = { axis, direction };
+  if (isTcpJog) {
+    if (!["x", "y", "z", "rx", "ry", "rz"].includes(axis) || ![-1, 1].includes(direction)) return;
+    state.activeJog = { mode: "tcp", axis, direction };
+  } else {
+    if (!Number.isInteger(axis) || ![-1, 1].includes(direction)) return;
+    state.activeJog = { mode: "axis", axis, direction };
+  }
   clearJogButtons();
   button.classList.add("active");
-  sendJog().catch((error) => {
+  const startEndpoint = isTcpJog ? "/api/hmi/tcp/start" : "/api/hmi/jog/start";
+  const heartbeatEndpoint = isTcpJog ? "/api/hmi/tcp/heartbeat" : "/api/hmi/jog/heartbeat";
+  sendJog(startEndpoint).catch((error) => {
     commandState.textContent = `Jog Fehler: ${error.message}`;
     stopJog("error");
   });
   window.clearInterval(state.jogTimer);
   state.jogTimer = window.setInterval(() => {
-    sendJog("/api/hmi/jog/heartbeat").catch((error) => {
+    sendJog(heartbeatEndpoint).catch((error) => {
       commandState.textContent = `Jog Fehler: ${error.message}`;
       stopJog("error");
     });
@@ -298,10 +340,21 @@ function installControls() {
     button.setPointerCapture?.(event.pointerId);
     startJog(button);
   });
+  tcpJogBank.addEventListener("pointerdown", (event) => {
+    const button = event.target.closest(".tcp-jog-button");
+    if (!button) return;
+    button.setPointerCapture?.(event.pointerId);
+    startJog(button);
+  });
 
   axisBank.addEventListener("pointerup", () => stopJog("release"));
   axisBank.addEventListener("pointercancel", () => stopJog("cancel"));
   axisBank.addEventListener("pointerleave", () => {
+    if (state.activeJog) stopJog("leave");
+  });
+  tcpJogBank.addEventListener("pointerup", () => stopJog("release"));
+  tcpJogBank.addEventListener("pointercancel", () => stopJog("cancel"));
+  tcpJogBank.addEventListener("pointerleave", () => {
     if (state.activeJog) stopJog("leave");
   });
 
@@ -322,6 +375,12 @@ function installControls() {
   });
 
   speedRange.addEventListener("input", () => setSpeed(currentSpeed()));
+  tcpLinearSpeedRange.addEventListener("input", () => {
+    tcpLinearSpeedValue.textContent = `${tcpLinearSpeedRange.value} mm/s`;
+  });
+  tcpAngularSpeedRange.addEventListener("input", () => {
+    tcpAngularSpeedValue.textContent = `${tcpAngularSpeedRange.value} deg/s`;
+  });
   tcpVelocityRange.addEventListener("input", () => {
     tcpVelocityValue.textContent = `${tcpVelocityRange.value} mm/s`;
   });
@@ -331,6 +390,12 @@ function installControls() {
   speedPresets.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-speed]");
     if (button) setSpeed(Number(button.dataset.speed));
+  });
+  jogModeSwitch.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-jog-mode]");
+    if (!button) return;
+    stopJog("mode-switch");
+    setJogMode(button.dataset.jogMode);
   });
 
   document.querySelectorAll(".tile[data-panel]").forEach((tile) => {
@@ -374,6 +439,7 @@ renderSpeedGauges();
 renderJoints();
 updateSpeedGauges();
 setSpeed(5);
+setJogMode("axis");
 initTheme();
 installControls();
 connectSocket();

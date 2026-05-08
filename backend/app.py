@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from rclpy.executors import ExternalShutdownException
 from rclpy.action import ActionClient
-from geometry_msgs.msg import PoseStamped, Twist
+from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
@@ -63,6 +63,8 @@ HMI_HOME_POSITIONS_RAD = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 HMI_JOG_DURATION_SEC = 0.65
 HMI_MAX_SPEED_PERCENT = 30.0
 HMI_MIN_SPEED_PERCENT = 2.0
+HMI_TCP_MAX_LINEAR_M_S = 0.25
+HMI_TCP_MAX_ANGULAR_RAD_S = 0.6
 
 MESSAGE_TYPES = {
     "sensor_msgs/msg/JointState": JointState,
@@ -70,6 +72,7 @@ MESSAGE_TYPES = {
     "diagnostic_msgs/msg/DiagnosticArray": DiagnosticArray,
     "geometry_msgs/msg/PoseStamped": PoseStamped,
     "geometry_msgs/msg/Twist": Twist,
+    "geometry_msgs/msg/TwistStamped": TwistStamped,
     "std_msgs/msg/String": String,
     "std_msgs/msg/Bool": Bool,
     "std_msgs/msg/Float32": Float32,
@@ -637,6 +640,15 @@ class DashboardPersistence:
                     )
                     """,
                     """
+                    CREATE TABLE IF NOT EXISTS mail_recipients (
+                        id BIGSERIAL PRIMARY KEY,
+                        email TEXT NOT NULL UNIQUE,
+                        subscribed BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at DOUBLE PRECISION NOT NULL,
+                        updated_at DOUBLE PRECISION NOT NULL
+                    )
+                    """,
+                    """
                     CREATE TABLE IF NOT EXISTS settings (
                         key TEXT PRIMARY KEY,
                         value TEXT NOT NULL
@@ -704,6 +716,14 @@ class DashboardPersistence:
                     error TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS mail_recipients (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT NOT NULL UNIQUE,
+                    subscribed INTEGER NOT NULL DEFAULT 1,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
@@ -711,9 +731,11 @@ class DashboardPersistence:
                 """
                 )
             self._seed_setting(db, "mail_recipients", os.getenv("SMAN_MAIL_RECIPIENTS", ""))
+            self._seed_setting(db, "mail_enabled", "1")
             self._seed_setting(db, "mail_immediate_critical", "1")
             self._seed_setting(db, "mail_daily_summary", "1")
             self._seed_setting(db, "mail_weekly_report", "1")
+            self._migrate_mail_recipients(db)
 
     def _seed_setting(self, db: Any, key: str, value: str) -> None:
         if self.driver == "postgres":
@@ -724,6 +746,73 @@ class DashboardPersistence:
     def _setting(self, db: Any, key: str, default: str = "") -> str:
         row = db.execute(self._sql("SELECT value FROM settings WHERE key = ?"), (key,)).fetchone()
         return str(row["value"]) if row else default
+
+    def _parse_recipients(self, recipients: str) -> list[str]:
+        items = re.split(r"[,;\s]+", recipients.strip())
+        result = []
+        seen = set()
+        for item in items:
+            email = item.strip().lower()
+            if not email or email in seen or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+                continue
+            seen.add(email)
+            result.append(email)
+        return result
+
+    def _upsert_mail_recipient(self, db: Any, email: str, subscribed: bool = True) -> None:
+        now = time.time()
+        if self.driver == "postgres":
+            db.execute(
+                """
+                INSERT INTO mail_recipients(email, subscribed, created_at, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT(email) DO UPDATE SET subscribed = excluded.subscribed, updated_at = excluded.updated_at
+                """,
+                (email, subscribed, now, now),
+            )
+            return
+        db.execute(
+            """
+            INSERT INTO mail_recipients(email, subscribed, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(email) DO UPDATE SET subscribed = excluded.subscribed, updated_at = excluded.updated_at
+            """,
+            (email, 1 if subscribed else 0, now, now),
+        )
+
+    def _migrate_mail_recipients(self, db: Any) -> None:
+        if db.execute("SELECT COUNT(*) AS count FROM mail_recipients").fetchone()["count"]:
+            return
+        for email in self._parse_recipients(self._setting(db, "mail_recipients", "")):
+            self._upsert_mail_recipient(db, email, True)
+
+    def _mail_recipient_rows(self, db: Any) -> list[dict[str, Any]]:
+        rows = db.execute(
+            "SELECT id, email, subscribed, created_at, updated_at FROM mail_recipients ORDER BY email"
+        ).fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "email": row["email"],
+                "subscribed": bool(row["subscribed"]),
+                "created_at": float(row["created_at"]),
+                "updated_at": float(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
+    def _active_mail_recipients(self, db: Any) -> str:
+        if self._setting(db, "mail_enabled", "1") != "1":
+            return ""
+        rows = db.execute("SELECT email FROM mail_recipients WHERE subscribed = TRUE ORDER BY email").fetchall()
+        return ", ".join(row["email"] for row in rows)
+
+    def _sync_legacy_recipients_setting(self, db: Any) -> None:
+        recipients = self._active_mail_recipients(db)
+        db.execute(
+            self._sql("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
+            ("mail_recipients", recipients),
+        )
 
     def record_payload(self, payload: dict[str, Any]) -> None:
         topic = payload.get("topic")
@@ -913,10 +1002,10 @@ class DashboardPersistence:
                 )
                 event_id = int(cursor.lastrowid)
             if severity == "critical" and self._setting(db, "mail_immediate_critical", "1") == "1":
-                self._queue_mail(db, f"SMAN Alarm: {title}", f"{title}\n\n{detail}\n\nEvent #{event_id}", severity)
+                self._queue_mail(db, f"ABB GoFa Alarm: {title}", f"{title}\n\n{detail}\n\nEvent #{event_id}", severity)
 
     def _queue_mail(self, db: Any, subject: str, body: str, severity: str, recipients_override: str | None = None) -> int:
-        recipients = recipients_override if recipients_override is not None else self._setting(db, "mail_recipients", "")
+        recipients = recipients_override if recipients_override is not None else self._active_mail_recipients(db)
         status = "queued" if recipients.strip() else "needs_recipients"
         if self.driver == "postgres":
             cursor = db.execute(
@@ -932,7 +1021,7 @@ class DashboardPersistence:
 
     def queue_test_mail(self, recipients: str = "") -> dict[str, Any]:
         with self._connect() as db:
-            target = recipients.strip() or self._setting(db, "mail_recipients", "")
+            target = ", ".join(self._parse_recipients(recipients)) or self._active_mail_recipients(db)
             mail_id = self._queue_mail(
                 db,
                 "SMAN Testmail",
@@ -950,8 +1039,12 @@ class DashboardPersistence:
 
     def notification_settings(self) -> dict[str, Any]:
         with self._connect() as db:
+            recipients = self._mail_recipient_rows(db)
+            active_recipients = ", ".join(item["email"] for item in recipients if item["subscribed"])
             return {
-                "recipients": self._setting(db, "mail_recipients", ""),
+                "recipients": active_recipients,
+                "all_recipients": recipients,
+                "mail_enabled": self._setting(db, "mail_enabled", "1") == "1",
                 "immediate_critical": self._setting(db, "mail_immediate_critical", "1") == "1",
                 "daily_summary": self._setting(db, "mail_daily_summary", "1") == "1",
                 "weekly_report": self._setting(db, "mail_weekly_report", "1") == "1",
@@ -960,17 +1053,29 @@ class DashboardPersistence:
 
     def update_notification_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
         updates = {
-            "mail_recipients": str(settings.get("recipients", "")),
+            "mail_enabled": "1" if settings.get("mail_enabled", True) else "0",
             "mail_immediate_critical": "1" if settings.get("immediate_critical", True) else "0",
             "mail_daily_summary": "1" if settings.get("daily_summary", True) else "0",
             "mail_weekly_report": "1" if settings.get("weekly_report", True) else "0",
         }
         with self._connect() as db:
+            for email in self._parse_recipients(str(settings.get("recipients", ""))):
+                self._upsert_mail_recipient(db, email, True)
             for key, value in updates.items():
                 db.execute(
                     self._sql("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
                     (key, value),
                 )
+            self._sync_legacy_recipients_setting(db)
+        return self.notification_settings()
+
+    def update_mail_recipient(self, payload: dict[str, Any]) -> dict[str, Any]:
+        email = self._parse_recipients(str(payload.get("email", "")))
+        if not email:
+            raise ValueError("ungueltige Mail-Adresse")
+        with self._connect() as db:
+            self._upsert_mail_recipient(db, email[0], bool(payload.get("subscribed", True)))
+            self._sync_legacy_recipients_setting(db)
         return self.notification_settings()
 
     def acknowledge_event(self, event_id: int, acknowledged_by: str = "dashboard", comment: str = "") -> dict[str, str]:
@@ -1251,6 +1356,9 @@ class HmiMotionController:
         self._node = node
         self._store = store
         self._client = ActionClient(node, FollowJointTrajectory, "/gofa_arm_controller/follow_joint_trajectory")
+        self._tcp_twist_topic = os.getenv("SMAN_HMI_TCP_TWIST_TOPIC", "/servo_node/delta_twist_cmds")
+        self._tcp_twist_frame = os.getenv("SMAN_HMI_TCP_TWIST_FRAME", "base_link")
+        self._tcp_twist_publisher = node.create_publisher(TwistStamped, self._tcp_twist_topic, 10)
         self._lock = threading.Lock()
         self._active_goal_handle: Any = None
         self._last_command: dict[str, Any] = {"mode": "idle", "updated_at": time.time()}
@@ -1262,6 +1370,8 @@ class HmiMotionController:
         return {
             "available": True,
             "action": "/gofa_arm_controller/follow_joint_trajectory",
+            "tcp_twist_topic": self._tcp_twist_topic,
+            "tcp_twist_frame": self._tcp_twist_frame,
             "joints": HMI_JOINT_NAMES,
             "positions": current,
             "command": command,
@@ -1270,6 +1380,8 @@ class HmiMotionController:
                 "max_speed_percent": HMI_MAX_SPEED_PERCENT,
                 "default_speed_percent": 5,
                 "home_speed_percent": 5,
+                "max_tcp_linear_m_s": HMI_TCP_MAX_LINEAR_M_S,
+                "max_tcp_angular_rad_s": HMI_TCP_MAX_ANGULAR_RAD_S,
             },
         }
 
@@ -1283,6 +1395,7 @@ class HmiMotionController:
                 goal_handle.cancel_goal_async()
             except Exception as exc:
                 self._node.get_logger().warn(f"HMI cancel failed: {exc}")
+        self._publish_tcp_twist(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         return {"status": "stopping", "reason": reason}
 
     def jog(self, axis: int, direction: int, speed_percent: float) -> dict[str, Any]:
@@ -1308,6 +1421,39 @@ class HmiMotionController:
             }
         return {"status": "sent", "axis": axis + 1, "speed_percent": speed, "target": target}
 
+    def tcp_jog(self, axis: str, direction: int, linear_speed_mm_s: float, angular_speed_deg_s: float) -> dict[str, Any]:
+        if axis not in {"x", "y", "z", "rx", "ry", "rz"}:
+            raise ValueError("axis must be one of x, y, z, rx, ry, rz")
+        if direction not in {-1, 1}:
+            raise ValueError("direction must be -1 or 1")
+
+        linear_speed = self._clamp_tcp_linear_speed(linear_speed_mm_s)
+        angular_speed = self._clamp_tcp_angular_speed(angular_speed_deg_s)
+        values = {"x": 0.0, "y": 0.0, "z": 0.0, "rx": 0.0, "ry": 0.0, "rz": 0.0}
+        if axis in {"x", "y", "z"}:
+            values[axis] = direction * linear_speed
+        else:
+            values[axis] = direction * angular_speed
+        self._publish_tcp_twist(values["x"], values["y"], values["z"], values["rx"], values["ry"], values["rz"])
+        with self._lock:
+            self._last_command = {
+                "mode": "tcp_jog",
+                "axis": axis,
+                "direction": direction,
+                "linear_speed_mm_s": round(linear_speed * 1000.0, 1),
+                "angular_speed_deg_s": round(math.degrees(angular_speed), 1),
+                "twist_topic": self._tcp_twist_topic,
+                "updated_at": time.time(),
+            }
+        return {
+            "status": "sent",
+            "axis": axis,
+            "direction": direction,
+            "linear_speed_mm_s": round(linear_speed * 1000.0, 1),
+            "angular_speed_deg_s": round(math.degrees(angular_speed), 1),
+            "twist_topic": self._tcp_twist_topic,
+        }
+
     def home(self, speed_percent: float) -> dict[str, Any]:
         current = self._require_current_positions()
         speed = self._clamp_speed(speed_percent)
@@ -1332,6 +1478,32 @@ class HmiMotionController:
         except (TypeError, ValueError):
             speed = 5.0
         return max(HMI_MIN_SPEED_PERCENT, min(HMI_MAX_SPEED_PERCENT, speed))
+
+    def _clamp_tcp_linear_speed(self, value: float) -> float:
+        try:
+            speed = float(value) / 1000.0
+        except (TypeError, ValueError):
+            speed = 0.05
+        return max(0.005, min(HMI_TCP_MAX_LINEAR_M_S, speed))
+
+    def _clamp_tcp_angular_speed(self, value: float) -> float:
+        try:
+            speed = math.radians(float(value))
+        except (TypeError, ValueError):
+            speed = math.radians(10.0)
+        return max(math.radians(1.0), min(HMI_TCP_MAX_ANGULAR_RAD_S, speed))
+
+    def _publish_tcp_twist(self, x: float, y: float, z: float, rx: float, ry: float, rz: float) -> None:
+        stamped = TwistStamped()
+        stamped.header.stamp = self._node.get_clock().now().to_msg()
+        stamped.header.frame_id = self._tcp_twist_frame
+        stamped.twist.linear.x = float(x)
+        stamped.twist.linear.y = float(y)
+        stamped.twist.linear.z = float(z)
+        stamped.twist.angular.x = float(rx)
+        stamped.twist.angular.y = float(ry)
+        stamped.twist.angular.z = float(rz)
+        self._tcp_twist_publisher.publish(stamped)
 
     def _require_current_positions(self) -> list[float]:
         positions = self._store.latest_joint_positions()
@@ -1695,6 +1867,25 @@ async def hmi_jog_heartbeat(payload: dict[str, Any]) -> dict[str, Any]:
     return await hmi_jog_start(payload)
 
 
+@app.post("/api/hmi/tcp/start")
+async def hmi_tcp_start(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return await asyncio.to_thread(
+            hmi_motion_controller().tcp_jog,
+            str(payload.get("axis", "")),
+            int(payload.get("direction", 0)),
+            float(payload.get("linear_speed_mm_s", 50)),
+            float(payload.get("angular_speed_deg_s", 10)),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/hmi/tcp/heartbeat")
+async def hmi_tcp_heartbeat(payload: dict[str, Any]) -> dict[str, Any]:
+    return await hmi_tcp_start(payload)
+
+
 @app.post("/api/hmi/jog/stop")
 async def hmi_jog_stop(payload: dict[str, Any] | None = None) -> dict[str, str]:
     reason = str((payload or {}).get("reason", "operator"))
@@ -1730,6 +1921,14 @@ async def notification_settings() -> dict[str, Any]:
 @app.post("/api/settings/notifications")
 async def update_notification_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return await asyncio.to_thread(PERSISTENCE.update_notification_settings, settings)
+
+
+@app.post("/api/mail/recipients")
+async def update_mail_recipient(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return await asyncio.to_thread(PERSISTENCE.update_mail_recipient, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/mail/test")

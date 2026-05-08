@@ -607,6 +607,34 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   font-size: 13px;
 }
 
+.mail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(16, 18, 23, 0.86);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible {
+  border-color: rgba(32, 201, 151, 0.72);
+  outline: none;
+}
+
 .joint-list,
 .topic-list {
   padding: 16px;
@@ -864,6 +892,20 @@ pre {
   gap: 8px;
 }
 
+.mail-settings .switch-row,
+.mail-recipient-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.mail-settings input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
 .mail-settings input[type="text"] {
   width: 100%;
   min-height: 42px;
@@ -890,6 +932,76 @@ pre {
 
 .mail-settings button {
   padding: 0 14px;
+}
+
+.mail-recipient-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.mail-recipient-item {
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(16, 18, 23, 0.68);
+}
+
+.mail-recipient-item strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.mail-recipient-item span {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(7, 9, 13, 0.68);
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.modal-panel {
+  width: min(620px, 100%);
+  max-height: min(72vh, 680px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.modal-head h2 {
+  margin: 4px 0 0;
+  font-size: 22px;
+}
+
+.modal-panel .mail-recipient-list {
+  max-height: calc(min(72vh, 680px) - 86px);
+  overflow: auto;
+  padding: 16px;
 }
 
 .preview-controls {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SMAN ABB GoFa Dashboard</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=maintenance-demo-2" />
+    <link rel="stylesheet" href="/assets/styles.css?v=mail-subscriptions-2" />
   </head>
   <body>
     <main class="shell">
@@ -281,12 +281,16 @@
           <article class="panel">
             <div class="panel-header">
               <div><p class="eyebrow">Mail</p><h2>Benachrichtigungen</h2></div>
-              <span id="mailSettingsState">nicht konfiguriert</span>
+              <div class="mail-header-actions">
+                <span id="mailSettingsState">nicht konfiguriert</span>
+                <button class="icon-button" id="manageMailRecipients" type="button" aria-label="Empfänger verwalten" title="Empfänger verwalten">⚙</button>
+              </div>
             </div>
             <form class="mail-settings" id="mailSettingsForm">
-              <label>Empfänger
-                <input id="mailRecipients" type="text" placeholder="technik@example.com, instandhaltung@example.com" />
+              <label>Empfänger hinzufügen
+                <input id="mailRecipients" type="text" placeholder="technik@example.com, instandhaltung@example.com" autocomplete="email" />
               </label>
+              <label class="switch-row"><input id="mailEnabled" type="checkbox" checked /> <span>Mails abonnieren</span></label>
               <label><input id="mailImmediate" type="checkbox" checked /> Kritische Alarme sofort</label>
               <label><input id="mailDaily" type="checkbox" checked /> Tägliche Zusammenfassung</label>
               <label><input id="mailWeekly" type="checkbox" checked /> Wöchentlicher Zustandsreport</label>
@@ -419,6 +423,18 @@
         </article>
       </section>
     </main>
+    <div class="modal-backdrop" id="mailRecipientsModal" role="dialog" aria-modal="true" aria-labelledby="mailRecipientsTitle" hidden>
+      <section class="modal-panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Mail</p>
+            <h2 id="mailRecipientsTitle">Empfänger verwalten</h2>
+          </div>
+          <button class="icon-button" id="closeMailRecipients" type="button" aria-label="Schließen" title="Schließen">×</button>
+        </div>
+        <div class="mail-recipient-list" id="mailRecipientList"></div>
+      </section>
+    </div>
     <div class="joint-popover" id="jointPopover" role="dialog" aria-live="polite" hidden></div>
 
     <script type="importmap">
@@ -428,6 +444,6 @@
         }
       }
     </script>
-    <script type="module" src="/assets/app.js?v=egm-tcp-stable-1"></script>
+    <script type="module" src="/assets/app.js?v=mail-subscriptions-2"></script>
   </body>
 </html>

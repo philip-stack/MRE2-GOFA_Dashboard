@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GoFa HMI</title>
-    <link rel="stylesheet" href="/assets/hmi.css?v=1" />
+    <link rel="stylesheet" href="/assets/hmi.css?v=tcp-jog-2" />
   </head>
   <body>
     <main class="hmi-shell">
@@ -49,7 +49,7 @@
       <section class="tile-board" aria-label="HMI Bereiche">
         <button class="tile active" type="button" data-panel="robotPanel">
           <span>Roboter</span>
-          <strong>Achssteuerung</strong>
+          <strong>Jog Control</strong>
         </button>
         <button class="tile" type="button" data-panel="speedPanel">
           <span>Speed</span>
@@ -77,13 +77,55 @@
         <div class="panel-head">
           <div>
             <p class="eyebrow">Hold to jog</p>
-            <h2>Achsen bewegen</h2>
+            <h2 id="jogModeTitle">Achsen bewegen</h2>
           </div>
-          <button class="stop-button" id="stopButton" type="button">STOP</button>
+          <div class="panel-tools">
+            <div class="mode-switch" id="jogModeSwitch" role="tablist" aria-label="Jog Modus">
+              <button class="active" type="button" data-jog-mode="axis">Achsen</button>
+              <button type="button" data-jog-mode="tcp">Linear</button>
+            </div>
+            <button class="stop-button" id="stopButton" type="button">STOP</button>
+          </div>
         </div>
 
         <div class="control-grid">
           <section class="axis-bank" id="axisBank" aria-label="Achssteuerung"></section>
+          <section class="tcp-bank" id="tcpJogBank" aria-label="TCP Linearsteuerung" hidden>
+            <article class="tcp-card tcp-translate">
+              <div>
+                <p class="eyebrow">TCP Linear</p>
+                <h3>Position</h3>
+              </div>
+              <div class="tcp-pad" aria-label="TCP in X und Y bewegen">
+                <button class="tcp-jog-button up" type="button" data-tcp-axis="x" data-direction="1">Vor</button>
+                <button class="tcp-jog-button left" type="button" data-tcp-axis="y" data-direction="1">Links</button>
+                <button class="tcp-jog-button down" type="button" data-tcp-axis="x" data-direction="-1">Zurück</button>
+                <button class="tcp-jog-button right" type="button" data-tcp-axis="y" data-direction="-1">Rechts</button>
+              </div>
+              <div class="tcp-z-controls">
+                <button class="tcp-jog-button" type="button" data-tcp-axis="z" data-direction="1">Z +</button>
+                <button class="tcp-jog-button" type="button" data-tcp-axis="z" data-direction="-1">Z -</button>
+              </div>
+            </article>
+
+            <article class="tcp-card">
+              <div>
+                <p class="eyebrow">TCP Rotation</p>
+                <h3>Orientierung</h3>
+              </div>
+              <div class="tcp-rotation-grid">
+                <span>Roll</span>
+                <button class="tcp-jog-button" type="button" data-tcp-axis="rx" data-direction="-1">-</button>
+                <button class="tcp-jog-button" type="button" data-tcp-axis="rx" data-direction="1">+</button>
+                <span>Pitch</span>
+                <button class="tcp-jog-button" type="button" data-tcp-axis="ry" data-direction="-1">-</button>
+                <button class="tcp-jog-button" type="button" data-tcp-axis="ry" data-direction="1">+</button>
+                <span>Yaw</span>
+                <button class="tcp-jog-button" type="button" data-tcp-axis="rz" data-direction="-1">-</button>
+                <button class="tcp-jog-button" type="button" data-tcp-axis="rz" data-direction="1">+</button>
+              </div>
+            </article>
+          </section>
 
           <aside class="control-side">
             <div class="field">
@@ -98,6 +140,18 @@
                 <button type="button" data-speed="10">10%</button>
                 <button type="button" data-speed="20">20%</button>
                 <button type="button" data-speed="30">30%</button>
+              </div>
+            </div>
+            <div class="field tcp-speed-field" id="tcpJogSpeedField" hidden>
+              <label for="tcpLinearSpeedRange">TCP Linear</label>
+              <div class="speed-row">
+                <input id="tcpLinearSpeedRange" type="range" min="5" max="250" step="5" value="50" />
+                <output id="tcpLinearSpeedValue">50 mm/s</output>
+              </div>
+              <label for="tcpAngularSpeedRange">TCP Rotation</label>
+              <div class="speed-row">
+                <input id="tcpAngularSpeedRange" type="range" min="1" max="35" step="1" value="10" />
+                <output id="tcpAngularSpeedValue">10 deg/s</output>
               </div>
             </div>
 
@@ -224,6 +278,6 @@
       </section>
     </main>
 
-    <script src="/assets/hmi.js?v=1" defer></script>
+    <script src="/assets/hmi.js?v=tcp-jog-2" defer></script>
   </body>
 </html>
