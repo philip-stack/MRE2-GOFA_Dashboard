@@ -12,7 +12,7 @@ Web-Dashboard für ROS2-Daten eines ABB GoFa Roboters. Die App läuft in Docker,
 - HMI HRC Safety Panel für Sichtbarkeit, Transparenz, Zonen-Manipulation und Robot-Visibility
 - Automatische ROS2-Topic-Discovery über die Host-Bridge
 - Developer-Ansicht mit Topic-Freshness, Paketfluss und gefilterter JSON-Vorschau
-- Maintenance-Ansicht mit persistierten Trends, Zeitfiltern und Event-Timeline
+- Maintenance-Ansicht mit persistierten Trends, Zeitfiltern, Event-Timeline und dismissbaren Event-Toasts
 - PostgreSQL-Datenbank als Docker-Service, SQLite als lokaler Fallback
 - Mail-Benachrichtigungen für kritische Events
 

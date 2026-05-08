@@ -25,6 +25,7 @@ const twinStatusEl = document.getElementById("twinStatus");
 const twinJointCountEl = document.getElementById("twinJointCount");
 const twinPoseLabelEl = document.getElementById("twinPoseLabel");
 const jointPopoverEl = document.getElementById("jointPopover");
+const eventToastStackEl = document.getElementById("eventToastStack");
 const demoModeButtonEl = document.getElementById("demoModeButton");
 const viewTabs = [...document.querySelectorAll(".view-tab")];
 const dashboardViews = [...document.querySelectorAll("[data-dashboard-view]")];
@@ -183,6 +184,8 @@ const state = {
   lastMessagePreviewAt: 0,
   maintenanceWindow: "24h",
   showMailRecipients: false,
+  eventToastsInitialized: false,
+  seenEventIds: new Set(),
   graphWindow: "live",
   maintenanceTimer: null,
 };
@@ -639,6 +642,7 @@ function renderMaintenanceSummary(summary) {
   }
 
   const events = summary.events || [];
+  syncEventToasts(events, Boolean(summary.window));
   eventCountValueEl.textContent = `${events.length} Events`;
   maintenanceTimelineEl.innerHTML = "";
   if (!events.length) {
@@ -687,6 +691,47 @@ function renderMaintenanceSummary(summary) {
   mailSettingsStateEl.textContent = settings.smtp_configured
     ? (settings.mail_enabled === false ? "pausiert" : settings.recipients ? "aktiv" : "Empfaenger fehlen")
     : "SMTP fehlt";
+}
+
+function syncEventToasts(events, shouldNotify) {
+  if (!shouldNotify || !eventToastStackEl) return;
+  const orderedEvents = [...events].sort((left, right) => (left.created_at || 0) - (right.created_at || 0));
+  if (!state.eventToastsInitialized) {
+    for (const event of orderedEvents) {
+      if (event.id !== undefined && event.id !== null) state.seenEventIds.add(String(event.id));
+    }
+    state.eventToastsInitialized = true;
+    return;
+  }
+  for (const event of orderedEvents) {
+    if (event.id === undefined || event.id === null) continue;
+    const eventId = String(event.id);
+    if (state.seenEventIds.has(eventId)) continue;
+    state.seenEventIds.add(eventId);
+    showEventToast(event);
+  }
+}
+
+function showEventToast(event) {
+  const toast = document.createElement("article");
+  toast.className = `event-toast ${event.severity || "info"}`;
+  const content = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = event.title || "Neues Event";
+  const detail = document.createElement("p");
+  detail.textContent = event.detail || event.type || "";
+  const meta = document.createElement("span");
+  meta.textContent = `${event.severity || "info"} · ${formatTime(event.created_at)}`;
+  content.append(title, detail, meta);
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.setAttribute("aria-label", "Meldung schließen");
+  close.textContent = "×";
+  close.addEventListener("click", () => toast.remove());
+  toast.append(content, close);
+  eventToastStackEl.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 14000);
 }
 
 function renderMailRecipients(recipients) {
