@@ -295,11 +295,19 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
 
 .maintenance-grid {
   align-items: start;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .maintenance-grid .panel {
   min-height: 0;
+}
+
+.mail-grid {
+  align-items: stretch;
+}
+
+.mail-grid .panel {
+  height: 100%;
 }
 
 .maintenance-kpi-grid {
@@ -844,8 +852,14 @@ pre {
 }
 
 .timeline {
-  max-height: 420px;
+  max-height: 440px;
   overflow: auto;
+}
+
+.mail-queue {
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .timeline-item,
