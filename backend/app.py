@@ -1,8 +1,12 @@
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import math
 import os
 import re
+import secrets
 import smtplib
 import socket
 import sqlite3
@@ -19,7 +23,7 @@ import rclpy
 from builtin_interfaces.msg import Duration
 from control_msgs.action import FollowJointTrajectory
 from diagnostic_msgs.msg import DiagnosticArray
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -65,6 +69,11 @@ HMI_MAX_SPEED_PERCENT = 30.0
 HMI_MIN_SPEED_PERCENT = 2.0
 HMI_TCP_MAX_LINEAR_M_S = 0.25
 HMI_TCP_MAX_ANGULAR_RAD_S = 0.6
+HMI_AUTH_USERNAME = os.getenv("SMAN_HMI_USERNAME", "Default User")
+HMI_AUTH_PASSWORD = os.getenv("SMAN_HMI_PASSWORD", "robotics")
+HMI_AUTH_COOKIE = "sman_hmi_session"
+HMI_AUTH_SECRET = os.getenv("SMAN_HMI_SESSION_SECRET", "sman-hmi-local-session-secret")
+HMI_AUTH_COOKIE_SECURE = os.getenv("SMAN_HMI_COOKIE_SECURE", "0").lower() in {"1", "true", "yes"}
 
 MESSAGE_TYPES = {
     "sensor_msgs/msg/JointState": JointState,
@@ -1842,12 +1851,77 @@ def hmi_motion_controller() -> HmiMotionController:
     return ROS_NODE.hmi_motion
 
 
-@app.get("/api/hmi/state")
+def hmi_auth_signature(payload: str) -> str:
+    digest = hmac.new(HMI_AUTH_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def create_hmi_session(username: str) -> str:
+    issued_at = str(int(time.time()))
+    nonce = secrets.token_urlsafe(18)
+    payload = base64.urlsafe_b64encode(f"{username}:{issued_at}:{nonce}".encode("utf-8")).decode("ascii").rstrip("=")
+    return f"{payload}.{hmi_auth_signature(payload)}"
+
+
+def valid_hmi_session(token: str | None) -> bool:
+    if not token or "." not in token:
+        return False
+    payload, signature = token.rsplit(".", 1)
+    if not hmac.compare_digest(signature, hmi_auth_signature(payload)):
+        return False
+    try:
+        padded = payload + "=" * (-len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return False
+    username, _, _ = decoded.partition(":")
+    return hmac.compare_digest(username, HMI_AUTH_USERNAME)
+
+
+def require_hmi_auth(request: Request) -> None:
+    if not valid_hmi_session(request.cookies.get(HMI_AUTH_COOKIE)):
+        raise HTTPException(status_code=401, detail="HMI login required")
+
+
+def set_hmi_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        HMI_AUTH_COOKIE,
+        token,
+        httponly=True,
+        secure=HMI_AUTH_COOKIE_SECURE,
+        samesite="strict",
+        path="/",
+    )
+
+
+@app.get("/api/hmi/auth/status")
+async def hmi_auth_status(request: Request) -> dict[str, Any]:
+    authenticated = valid_hmi_session(request.cookies.get(HMI_AUTH_COOKIE))
+    return {"authenticated": authenticated, "username": HMI_AUTH_USERNAME if authenticated else None}
+
+
+@app.post("/api/hmi/auth/login")
+async def hmi_auth_login(payload: dict[str, Any], response: Response) -> dict[str, Any]:
+    username = str(payload.get("username", ""))
+    password = str(payload.get("password", ""))
+    if not hmac.compare_digest(username, HMI_AUTH_USERNAME) or not hmac.compare_digest(password, HMI_AUTH_PASSWORD):
+        raise HTTPException(status_code=401, detail="Username oder Passwort ist falsch")
+    set_hmi_auth_cookie(response, create_hmi_session(username))
+    return {"authenticated": True, "username": username}
+
+
+@app.post("/api/hmi/auth/logout")
+async def hmi_auth_logout(response: Response) -> dict[str, bool]:
+    response.delete_cookie(HMI_AUTH_COOKIE, path="/", samesite="strict", secure=HMI_AUTH_COOKIE_SECURE)
+    return {"authenticated": False}
+
+
+@app.get("/api/hmi/state", dependencies=[Depends(require_hmi_auth)])
 async def hmi_state() -> dict[str, Any]:
     return await asyncio.to_thread(hmi_motion_controller().state)
 
 
-@app.post("/api/hmi/jog/start")
+@app.post("/api/hmi/jog/start", dependencies=[Depends(require_hmi_auth)])
 async def hmi_jog_start(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         return await asyncio.to_thread(
@@ -1862,12 +1936,12 @@ async def hmi_jog_start(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@app.post("/api/hmi/jog/heartbeat")
+@app.post("/api/hmi/jog/heartbeat", dependencies=[Depends(require_hmi_auth)])
 async def hmi_jog_heartbeat(payload: dict[str, Any]) -> dict[str, Any]:
     return await hmi_jog_start(payload)
 
 
-@app.post("/api/hmi/tcp/start")
+@app.post("/api/hmi/tcp/start", dependencies=[Depends(require_hmi_auth)])
 async def hmi_tcp_start(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         return await asyncio.to_thread(
@@ -1881,18 +1955,18 @@ async def hmi_tcp_start(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/hmi/tcp/heartbeat")
+@app.post("/api/hmi/tcp/heartbeat", dependencies=[Depends(require_hmi_auth)])
 async def hmi_tcp_heartbeat(payload: dict[str, Any]) -> dict[str, Any]:
     return await hmi_tcp_start(payload)
 
 
-@app.post("/api/hmi/jog/stop")
+@app.post("/api/hmi/jog/stop", dependencies=[Depends(require_hmi_auth)])
 async def hmi_jog_stop(payload: dict[str, Any] | None = None) -> dict[str, str]:
     reason = str((payload or {}).get("reason", "operator"))
     return await asyncio.to_thread(hmi_motion_controller().stop, reason)
 
 
-@app.post("/api/hmi/home")
+@app.post("/api/hmi/home", dependencies=[Depends(require_hmi_auth)])
 async def hmi_home(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         return await asyncio.to_thread(

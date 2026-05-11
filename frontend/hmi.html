@@ -4,9 +4,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GoFa HMI</title>
-    <link rel="stylesheet" href="/assets/hmi.css?v=tcp-jog-2" />
+    <link rel="stylesheet" href="/assets/hmi.css?v=hmi-login-1" />
   </head>
-  <body>
+  <body class="auth-pending">
+    <section class="login-screen" id="loginScreen" aria-label="HMI Login">
+      <form class="login-panel" id="loginForm">
+        <p class="eyebrow">Geschützter Zugriff</p>
+        <h1>GoFa HMI Login</h1>
+        <label>
+          <span>Username</span>
+          <input id="loginUsername" name="username" type="text" autocomplete="username" value="Default User" required />
+        </label>
+        <label>
+          <span>Passwort</span>
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="login-button" type="submit">Einloggen</button>
+        <p class="login-error" id="loginError" role="alert"></p>
+      </form>
+    </section>
+
     <main class="hmi-shell">
       <header class="hmi-topbar">
         <div>
@@ -19,6 +36,7 @@
             <small id="lastUpdateValue">-</small>
           </div>
           <button class="tool-button" id="themeButton" type="button">Transparent</button>
+          <button class="tool-button" id="logoutButton" type="button">Logout</button>
           <a class="tool-button" href="/">Dashboard</a>
           <div class="connection-pill" id="connectionPill">
             <span></span>
@@ -278,6 +296,6 @@
       </section>
     </main>
 
-    <script src="/assets/hmi.js?v=tcp-jog-2" defer></script>
+    <script src="/assets/hmi.js?v=hmi-login-1" defer></script>
   </body>
 </html>

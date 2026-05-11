@@ -30,7 +30,14 @@ const tcpVelocityRange = document.getElementById("tcpVelocityRange");
 const tcpVelocityValue = document.getElementById("tcpVelocityValue");
 const payloadRange = document.getElementById("payloadRange");
 const payloadValue = document.getElementById("payloadValue");
+const loginScreen = document.getElementById("loginScreen");
+const loginForm = document.getElementById("loginForm");
+const loginUsername = document.getElementById("loginUsername");
+const loginPassword = document.getElementById("loginPassword");
+const loginError = document.getElementById("loginError");
+const logoutButton = document.getElementById("logoutButton");
 const ROBOT_STALE_AFTER_SEC = 2.5;
+const CLIENT_SESSION_KEY = "sman-hmi-client-session";
 
 const state = {
   socket: null,
@@ -47,6 +54,7 @@ const state = {
   reconnectTimer: null,
   lastJointAt: null,
   egm: null,
+  authenticated: false,
 };
 
 function formatNumber(value, digits = 2) {
@@ -246,6 +254,7 @@ function connectSocket() {
     state.socketOnline = false;
     setRobotFresh(false);
     window.clearTimeout(state.reconnectTimer);
+    if (!state.authenticated) return;
     state.reconnectTimer = window.setTimeout(connectSocket, 1200);
   });
 }
@@ -254,11 +263,66 @@ async function postJson(url, payload = {}) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    showLogin(data.detail || "Bitte erneut einloggen");
+  }
   if (!response.ok) throw new Error(data.detail || response.statusText);
   return data;
+}
+
+function showLogin(message = "") {
+  state.authenticated = false;
+  document.body.classList.add("auth-pending");
+  document.body.classList.remove("authenticated");
+  loginError.textContent = message;
+  loginPassword.value = "";
+  loginScreen.hidden = false;
+  window.setTimeout(() => loginPassword.focus(), 0);
+}
+
+function showHmi(username = "Default User") {
+  state.authenticated = true;
+  document.body.classList.remove("auth-pending");
+  document.body.classList.add("authenticated");
+  loginError.textContent = "";
+  loginPassword.value = "";
+  commandState.textContent = `${username} angemeldet`;
+}
+
+async function checkAuth() {
+  const response = await fetch("/api/hmi/auth/status", { credentials: "same-origin" });
+  const data = await response.json().catch(() => ({}));
+  if (data.authenticated && window.sessionStorage.getItem(CLIENT_SESSION_KEY) === "1") {
+    showHmi(data.username);
+    return true;
+  }
+  if (data.authenticated) {
+    await fetch("/api/hmi/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
+  }
+  showLogin();
+  return false;
+}
+
+async function login(username, password) {
+  const data = await postJson("/api/hmi/auth/login", { username, password });
+  window.sessionStorage.setItem(CLIENT_SESSION_KEY, "1");
+  showHmi(data.username);
+}
+
+async function logout() {
+  await stopJog("logout");
+  if (state.socket) {
+    state.socket.close();
+    state.socket = null;
+  }
+  window.clearTimeout(state.reconnectTimer);
+  window.sessionStorage.removeItem(CLIENT_SESSION_KEY);
+  await postJson("/api/hmi/auth/logout", {});
+  showLogin("Abgemeldet");
 }
 
 async function sendJog(endpoint = "/api/hmi/jog/start") {
@@ -334,6 +398,25 @@ function startJog(button) {
 }
 
 function installControls() {
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    loginError.textContent = "";
+    try {
+      await login(loginUsername.value, loginPassword.value);
+      if (!state.socket) connectSocket();
+      loadMaintenanceSummary();
+    } catch (error) {
+      showLogin(error.message);
+    }
+  });
+
+  logoutButton.addEventListener("click", () => {
+    logout().catch((error) => {
+      commandState.textContent = `Logout Fehler: ${error.message}`;
+      showLogin();
+    });
+  });
+
   axisBank.addEventListener("pointerdown", (event) => {
     const button = event.target.closest(".jog-button");
     if (!button) return;
@@ -442,6 +525,11 @@ setSpeed(5);
 setJogMode("axis");
 initTheme();
 installControls();
-connectSocket();
-loadMaintenanceSummary();
-window.setInterval(loadMaintenanceSummary, 15000);
+checkAuth().then((authenticated) => {
+  if (!authenticated) return;
+  connectSocket();
+  loadMaintenanceSummary();
+});
+window.setInterval(() => {
+  if (state.authenticated) loadMaintenanceSummary();
+}, 15000);
