@@ -130,6 +130,67 @@ a {
   font-weight: 850;
 }
 
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 8, 12, 0.56);
+  backdrop-filter: blur(3px);
+}
+
+.confirm-overlay[hidden] {
+  display: none;
+}
+
+.confirm-dialog {
+  width: min(430px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.confirm-dialog h2,
+.confirm-dialog p {
+  margin: 0;
+}
+
+.confirm-dialog p:not(.eyebrow) {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.confirm-actions button {
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 950;
+}
+
+.confirm-secondary {
+  background: #263442;
+  color: var(--text);
+}
+
+.confirm-primary {
+  background: var(--accent);
+  color: #06110f;
+}
+
 .hmi-shell {
   width: min(1440px, 100%);
   min-height: 100vh;
@@ -525,6 +586,10 @@ h2 {
 .tcp-bank .tcp-jog-button {
   min-height: 36px;
   font-size: 1.35rem;
+}
+
+.tcp-z-controls .tcp-jog-button {
+  min-height: 58px;
 }
 
 .control-side {
@@ -931,6 +996,10 @@ output {
     min-height: 0;
     height: 100%;
     font-size: 2rem;
+  }
+
+  .tcp-z-controls .tcp-jog-button {
+    min-height: 72px;
   }
 
   .tcp-speed-field {

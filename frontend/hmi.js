@@ -36,6 +36,9 @@ const loginUsername = document.getElementById("loginUsername");
 const loginPassword = document.getElementById("loginPassword");
 const loginError = document.getElementById("loginError");
 const logoutButton = document.getElementById("logoutButton");
+const homeConfirmOverlay = document.getElementById("homeConfirmOverlay");
+const homeConfirmCancel = document.getElementById("homeConfirmCancel");
+const homeConfirmOk = document.getElementById("homeConfirmOk");
 const hmiShell = document.querySelector(".hmi-shell");
 const ROBOT_STALE_AFTER_SEC = 2.5;
 const CLIENT_SESSION_KEY = "sman-hmi-client-session";
@@ -57,6 +60,7 @@ const state = {
   lastJointAt: null,
   egm: null,
   authenticated: false,
+  homeConfirmResolve: null,
 };
 
 function formatNumber(value, digits = 2) {
@@ -315,6 +319,23 @@ function fitHmiToViewport() {
   document.documentElement.style.setProperty("--hmi-scale", scale.toFixed(3));
 }
 
+function closeHomeConfirm(confirmed) {
+  if (!state.homeConfirmResolve) return;
+  const resolve = state.homeConfirmResolve;
+  state.homeConfirmResolve = null;
+  homeConfirmOverlay.hidden = true;
+  resolve(confirmed);
+}
+
+function confirmHomeMove() {
+  if (state.homeConfirmResolve) closeHomeConfirm(false);
+  homeConfirmOverlay.hidden = false;
+  homeConfirmCancel.focus();
+  return new Promise((resolve) => {
+    state.homeConfirmResolve = resolve;
+  });
+}
+
 async function checkAuth() {
   const response = await fetch("/api/hmi/auth/status", { credentials: "same-origin" });
   const data = await response.json().catch(() => ({}));
@@ -477,13 +498,24 @@ function installControls() {
   });
 
   homeButton.addEventListener("click", async () => {
-    if (!window.confirm("Home langsam anfahren?")) return;
+    if (!(await confirmHomeMove())) return;
     try {
       const data = await postJson("/api/hmi/home", { speed_percent: currentSpeed() });
       motionValue.textContent = "Home";
       commandState.textContent = `Home gesendet: ${data.speed_percent}%, ${data.duration_sec.toFixed(1)} s`;
     } catch (error) {
       commandState.textContent = `Home Fehler: ${error.message}`;
+    }
+  });
+
+  homeConfirmCancel.addEventListener("click", () => closeHomeConfirm(false));
+  homeConfirmOk.addEventListener("click", () => closeHomeConfirm(true));
+  homeConfirmOverlay.addEventListener("click", (event) => {
+    if (event.target === homeConfirmOverlay) closeHomeConfirm(false);
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !homeConfirmOverlay.hidden) {
+      closeHomeConfirm(false);
     }
   });
 

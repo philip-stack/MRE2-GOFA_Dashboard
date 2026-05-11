@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GoFa HMI</title>
-    <link rel="stylesheet" href="/assets/hmi.css?v=hmi-hold-2" />
+    <link rel="stylesheet" href="/assets/hmi.css?v=hmi-home-dialog-1" />
   </head>
   <body class="auth-pending">
     <section class="login-screen" id="loginScreen" aria-label="HMI Login">
@@ -22,6 +22,18 @@
         <button class="login-button" type="submit">Einloggen</button>
         <p class="login-error" id="loginError" role="alert"></p>
       </form>
+    </section>
+
+    <section class="confirm-overlay" id="homeConfirmOverlay" hidden aria-label="Home anfahren bestaetigen">
+      <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="homeConfirmTitle">
+        <p class="eyebrow">Sicherheitsabfrage</p>
+        <h2 id="homeConfirmTitle">Home anfahren?</h2>
+        <p>Der Roboter faehrt langsam in die Home-Position.</p>
+        <div class="confirm-actions">
+          <button class="confirm-secondary" id="homeConfirmCancel" type="button">Abbrechen</button>
+          <button class="confirm-primary" id="homeConfirmOk" type="button">Home anfahren</button>
+        </div>
+      </div>
     </section>
 
     <main class="hmi-shell">
@@ -297,6 +309,6 @@
       </section>
     </main>
 
-    <script src="/assets/hmi.js?v=hmi-hold-2" defer></script>
+    <script src="/assets/hmi.js?v=hmi-home-dialog-1" defer></script>
   </body>
 </html>
