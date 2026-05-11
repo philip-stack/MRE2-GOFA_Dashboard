@@ -36,6 +36,7 @@ const loginUsername = document.getElementById("loginUsername");
 const loginPassword = document.getElementById("loginPassword");
 const loginError = document.getElementById("loginError");
 const logoutButton = document.getElementById("logoutButton");
+const hmiShell = document.querySelector(".hmi-shell");
 const ROBOT_STALE_AFTER_SEC = 2.5;
 const CLIENT_SESSION_KEY = "sman-hmi-client-session";
 
@@ -49,6 +50,7 @@ const state = {
   jointTimes: [],
   topics: new Map(),
   activeJog: null,
+  activePointerId: null,
   jogMode: "axis",
   jogTimer: null,
   reconnectTimer: null,
@@ -103,6 +105,7 @@ function setJogMode(mode) {
   jogModeSwitch.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("active", button.dataset.jogMode === state.jogMode);
   });
+  window.requestAnimationFrame(fitHmiToViewport);
 }
 
 function renderAxes() {
@@ -270,12 +273,17 @@ async function postJson(url, payload = {}) {
   if (response.status === 401) {
     showLogin(data.detail || "Bitte erneut einloggen");
   }
-  if (!response.ok) throw new Error(data.detail || response.statusText);
+  if (!response.ok) {
+    const error = new Error(data.detail || response.statusText);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
 function showLogin(message = "") {
   state.authenticated = false;
+  document.documentElement.style.setProperty("--hmi-scale", "1");
   document.body.classList.add("auth-pending");
   document.body.classList.remove("authenticated");
   loginError.textContent = message;
@@ -291,6 +299,20 @@ function showHmi(username = "Default User") {
   loginError.textContent = "";
   loginPassword.value = "";
   commandState.textContent = `${username} angemeldet`;
+  window.requestAnimationFrame(fitHmiToViewport);
+}
+
+function fitHmiToViewport() {
+  if (!state.authenticated || !hmiShell) return;
+  document.documentElement.style.setProperty("--hmi-scale", "1");
+  const naturalHeight = hmiShell.scrollHeight;
+  const naturalWidth = hmiShell.scrollWidth;
+  const scale = Math.min(
+    1,
+    (window.innerHeight - 1) / Math.max(1, naturalHeight),
+    (window.innerWidth - 1) / Math.max(1, naturalWidth),
+  );
+  document.documentElement.style.setProperty("--hmi-scale", scale.toFixed(3));
 }
 
 async function checkAuth() {
@@ -350,6 +372,13 @@ async function sendJog(endpoint = "/api/hmi/jog/start") {
   }
 }
 
+function handleJogError(error) {
+  commandState.textContent = `Jog Fehler: ${error.message}`;
+  if (error.status === 401) {
+    stopJog("auth-error");
+  }
+}
+
 function clearJogButtons() {
   document.querySelectorAll(".jog-button.active").forEach((button) => button.classList.remove("active"));
   document.querySelectorAll(".tcp-jog-button.active").forEach((button) => button.classList.remove("active"));
@@ -357,6 +386,7 @@ function clearJogButtons() {
 
 async function stopJog(reason = "operator") {
   state.activeJog = null;
+  state.activePointerId = null;
   window.clearInterval(state.jogTimer);
   state.jogTimer = null;
   clearJogButtons();
@@ -369,7 +399,7 @@ async function stopJog(reason = "operator") {
   }
 }
 
-function startJog(button) {
+function startJog(button, pointerId = null) {
   const isTcpJog = button.classList.contains("tcp-jog-button");
   const axis = isTcpJog ? button.dataset.tcpAxis : Number(button.dataset.axis);
   const direction = Number(button.dataset.direction);
@@ -380,20 +410,15 @@ function startJog(button) {
     if (!Number.isInteger(axis) || ![-1, 1].includes(direction)) return;
     state.activeJog = { mode: "axis", axis, direction };
   }
+  state.activePointerId = pointerId;
   clearJogButtons();
   button.classList.add("active");
   const startEndpoint = isTcpJog ? "/api/hmi/tcp/start" : "/api/hmi/jog/start";
   const heartbeatEndpoint = isTcpJog ? "/api/hmi/tcp/heartbeat" : "/api/hmi/jog/heartbeat";
-  sendJog(startEndpoint).catch((error) => {
-    commandState.textContent = `Jog Fehler: ${error.message}`;
-    stopJog("error");
-  });
+  sendJog(startEndpoint).catch(handleJogError);
   window.clearInterval(state.jogTimer);
   state.jogTimer = window.setInterval(() => {
-    sendJog(heartbeatEndpoint).catch((error) => {
-      commandState.textContent = `Jog Fehler: ${error.message}`;
-      stopJog("error");
-    });
+    sendJog(heartbeatEndpoint).catch(handleJogError);
   }, 320);
 }
 
@@ -420,25 +445,30 @@ function installControls() {
   axisBank.addEventListener("pointerdown", (event) => {
     const button = event.target.closest(".jog-button");
     if (!button) return;
+    event.preventDefault();
     button.setPointerCapture?.(event.pointerId);
-    startJog(button);
+    startJog(button, event.pointerId);
   });
   tcpJogBank.addEventListener("pointerdown", (event) => {
     const button = event.target.closest(".tcp-jog-button");
     if (!button) return;
+    event.preventDefault();
     button.setPointerCapture?.(event.pointerId);
-    startJog(button);
+    startJog(button, event.pointerId);
   });
 
-  axisBank.addEventListener("pointerup", () => stopJog("release"));
-  axisBank.addEventListener("pointercancel", () => stopJog("cancel"));
-  axisBank.addEventListener("pointerleave", () => {
-    if (state.activeJog) stopJog("leave");
+  window.addEventListener("pointerup", (event) => {
+    if (state.activeJog && (state.activePointerId === null || state.activePointerId === event.pointerId)) {
+      stopJog("release");
+    }
   });
-  tcpJogBank.addEventListener("pointerup", () => stopJog("release"));
-  tcpJogBank.addEventListener("pointercancel", () => stopJog("cancel"));
-  tcpJogBank.addEventListener("pointerleave", () => {
-    if (state.activeJog) stopJog("leave");
+  window.addEventListener("pointercancel", (event) => {
+    if (state.activeJog && (state.activePointerId === null || state.activePointerId === event.pointerId)) {
+      stopJog("cancel");
+    }
+  });
+  window.addEventListener("blur", () => {
+    if (state.activeJog) stopJog("window-blur");
   });
 
   stopButton.addEventListener("click", () => stopJog("stop-button"));
@@ -533,3 +563,4 @@ checkAuth().then((authenticated) => {
 window.setInterval(() => {
   if (state.authenticated) loadMaintenanceSummary();
 }, 15000);
+window.addEventListener("resize", fitHmiToViewport);

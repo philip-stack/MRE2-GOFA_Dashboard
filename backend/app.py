@@ -1748,6 +1748,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def hmi_no_cache(request: Request, call_next: Any) -> Response:
+    response = await call_next(request)
+    if request.url.path == "/hmi" or request.url.path.startswith("/assets/hmi."):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 TOPICS = read_topics()
 EGM_ENABLE = os.getenv("EGM_ENABLE", "1").lower() not in {"0", "false", "no"}
 EGM_HOST = os.getenv("EGM_HOST", "0.0.0.0")

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GoFa HMI</title>
-    <link rel="stylesheet" href="/assets/hmi.css?v=hmi-login-1" />
+    <link rel="stylesheet" href="/assets/hmi.css?v=hmi-hold-2" />
   </head>
   <body class="auth-pending">
     <section class="login-screen" id="loginScreen" aria-label="HMI Login">
@@ -126,6 +126,19 @@
               </div>
             </article>
 
+            <div class="field tcp-speed-field" id="tcpJogSpeedField">
+              <label for="tcpLinearSpeedRange">TCP Linear</label>
+              <div class="speed-row">
+                <input id="tcpLinearSpeedRange" type="range" min="5" max="250" step="5" value="50" />
+                <output id="tcpLinearSpeedValue">50 mm/s</output>
+              </div>
+              <label for="tcpAngularSpeedRange">TCP Rotation</label>
+              <div class="speed-row">
+                <input id="tcpAngularSpeedRange" type="range" min="1" max="35" step="1" value="10" />
+                <output id="tcpAngularSpeedValue">10 deg/s</output>
+              </div>
+            </div>
+
             <article class="tcp-card">
               <div>
                 <p class="eyebrow">TCP Rotation</p>
@@ -158,18 +171,6 @@
                 <button type="button" data-speed="10">10%</button>
                 <button type="button" data-speed="20">20%</button>
                 <button type="button" data-speed="30">30%</button>
-              </div>
-            </div>
-            <div class="field tcp-speed-field" id="tcpJogSpeedField" hidden>
-              <label for="tcpLinearSpeedRange">TCP Linear</label>
-              <div class="speed-row">
-                <input id="tcpLinearSpeedRange" type="range" min="5" max="250" step="5" value="50" />
-                <output id="tcpLinearSpeedValue">50 mm/s</output>
-              </div>
-              <label for="tcpAngularSpeedRange">TCP Rotation</label>
-              <div class="speed-row">
-                <input id="tcpAngularSpeedRange" type="range" min="1" max="35" step="1" value="10" />
-                <output id="tcpAngularSpeedValue">10 deg/s</output>
               </div>
             </div>
 
@@ -296,6 +297,6 @@
       </section>
     </main>
 
-    <script src="/assets/hmi.js?v=hmi-login-1" defer></script>
+    <script src="/assets/hmi.js?v=hmi-hold-2" defer></script>
   </body>
 </html>

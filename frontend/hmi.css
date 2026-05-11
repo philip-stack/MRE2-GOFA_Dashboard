@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  --hmi-scale: 1;
   --bg: #101418;
   --surface: #182028;
   --surface-2: #202a34;
@@ -19,6 +20,7 @@
 
 html,
 body {
+  height: 100%;
   min-height: 100%;
 }
 
@@ -32,6 +34,10 @@ body {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
   touch-action: manipulation;
+}
+
+body.authenticated {
+  overflow: hidden;
 }
 
 body.transparent {
@@ -128,10 +134,12 @@ a {
   width: min(1440px, 100%);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 18px;
+  padding: 10px 12px;
   display: grid;
   grid-template-rows: auto auto auto 1fr;
-  gap: 14px;
+  gap: 10px;
+  transform: scale(var(--hmi-scale));
+  transform-origin: top center;
 }
 
 .hmi-topbar,
@@ -145,8 +153,8 @@ a {
 }
 
 .hmi-topbar {
-  min-height: 86px;
-  padding: 14px 18px;
+  min-height: 60px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -169,11 +177,11 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(2rem, 4vw, 3.8rem);
+  font-size: clamp(1.65rem, 2.45vw, 2.25rem);
 }
 
 h2 {
-  font-size: 1.35rem;
+  font-size: 1.18rem;
 }
 
 .top-actions {
@@ -185,8 +193,8 @@ h2 {
 .command-pill,
 .tool-button,
 .connection-pill {
-  min-height: 48px;
-  padding: 0 16px;
+  min-height: 38px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-2);
@@ -242,8 +250,8 @@ h2 {
 
 .status-strip article,
 .summary-grid article {
-  min-height: 84px;
-  padding: 14px;
+  min-height: 52px;
+  padding: 8px 10px;
   border-right: 1px solid var(--line);
   display: grid;
   gap: 6px;
@@ -264,11 +272,11 @@ h2 {
 
 .status-strip strong,
 .summary-grid strong {
-  font-size: 1.45rem;
+  font-size: 1.18rem;
 }
 
 .tile-board {
-  padding: 10px;
+  padding: 6px;
   border-radius: 8px;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -276,13 +284,13 @@ h2 {
 }
 
 .tile {
-  min-height: 112px;
+  min-height: 58px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
-  padding: 16px;
+  padding: 8px 10px;
   display: grid;
   align-content: space-between;
   text-align: left;
@@ -300,13 +308,13 @@ h2 {
 }
 
 .tile strong {
-  font-size: 1.35rem;
+  font-size: 1.05rem;
 }
 
 .panel {
   display: none;
-  min-height: 420px;
-  padding: 16px;
+  min-height: 0;
+  padding: 12px;
   border-radius: 8px;
 }
 
@@ -319,7 +327,7 @@ h2 {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .panel-tools {
@@ -340,7 +348,7 @@ h2 {
 }
 
 .mode-switch button {
-  min-height: 48px;
+  min-height: 40px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -357,7 +365,7 @@ h2 {
 
 .stop-button {
   min-width: 168px;
-  min-height: 68px;
+  min-height: 46px;
   border: 0;
   border-radius: 8px;
   background: var(--danger);
@@ -370,13 +378,13 @@ h2 {
 .control-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 14px;
+  gap: 10px;
 }
 
 .axis-bank {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .axis-bank[hidden],
@@ -388,11 +396,16 @@ h2 {
 .tcp-bank {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-  gap: 12px;
+  grid-template-rows: auto 1fr;
+  gap: 10px;
+}
+
+.tcp-translate {
+  grid-row: 1 / span 2;
 }
 
 .axis-row {
-  min-height: 124px;
+  min-height: 94px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-2);
@@ -416,7 +429,7 @@ h2 {
 
 .jog-button,
 .tcp-jog-button {
-  min-height: 84px;
+  min-height: 58px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #263442;
@@ -424,6 +437,8 @@ h2 {
   font-size: 1.7rem;
   font-weight: 950;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
 }
 
 .jog-button.active,
@@ -437,10 +452,15 @@ h2 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-2);
-  padding: 14px;
+  padding: 12px;
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 10px;
+}
+
+.tcp-bank .tcp-card {
+  padding: 6px;
+  gap: 5px;
 }
 
 .tcp-card h3 {
@@ -448,11 +468,15 @@ h2 {
   font-size: 1.2rem;
 }
 
+.tcp-bank .tcp-card h3 {
+  font-size: 1rem;
+}
+
 .tcp-pad {
   display: grid;
   grid-template-columns: repeat(3, minmax(92px, 1fr));
-  grid-template-rows: repeat(3, minmax(78px, 1fr));
-  gap: 10px;
+  grid-template-rows: repeat(3, minmax(34px, 1fr));
+  gap: 6px;
 }
 
 .tcp-pad .up {
@@ -478,14 +502,14 @@ h2 {
 .tcp-z-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .tcp-rotation-grid {
   display: grid;
   grid-template-columns: minmax(72px, 1fr) 96px 96px;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .tcp-rotation-grid span {
@@ -495,13 +519,18 @@ h2 {
 }
 
 .tcp-rotation-grid .tcp-jog-button {
-  min-height: 72px;
+  min-height: 38px;
+}
+
+.tcp-bank .tcp-jog-button {
+  min-height: 36px;
+  font-size: 1.35rem;
 }
 
 .control-side {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 10px;
 }
 
 .field,
@@ -509,23 +538,40 @@ h2 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-2);
-  padding: 14px;
+  padding: 10px;
 }
 
 .field label {
   display: block;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: var(--muted);
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .tcp-speed-field {
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px 10px;
+  align-self: start;
+  padding: 6px;
 }
 
 .tcp-speed-field label:not(:first-child) {
-  margin-top: 12px;
+  margin-top: 0;
+}
+
+.tcp-speed-field label {
+  margin-bottom: 0;
+}
+
+.tcp-speed-field output {
+  min-width: 96px;
+}
+
+.tcp-speed-field .speed-row {
+  grid-template-columns: minmax(0, 1fr) 104px;
 }
 
 .speed-row {
@@ -543,10 +589,11 @@ input[type="range"] {
 output {
   font-weight: 950;
   text-align: right;
+  white-space: nowrap;
 }
 
 .speed-presets {
-  margin-top: 12px;
+  margin-top: 8px;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 6px;
@@ -554,7 +601,7 @@ output {
 
 .speed-presets button,
 .home-button {
-  min-height: 48px;
+  min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #263442;
@@ -569,14 +616,15 @@ output {
 }
 
 .home-button {
-  min-height: 76px;
+  min-height: 44px;
   background: #314151;
   color: white;
 }
 
 .joint-readout {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
 }
 
 .joint-readout div,
@@ -753,5 +801,189 @@ output {
 
   .mode-switch {
     width: 100%;
+  }
+}
+
+@media (min-width: 1600px) and (min-height: 900px) {
+  .hmi-shell {
+    width: min(1840px, 100%);
+    padding: 18px;
+    gap: 14px;
+  }
+
+  .hmi-topbar {
+    min-height: 88px;
+    padding: 14px 18px;
+  }
+
+  h1 {
+    font-size: 3.35rem;
+  }
+
+  h2 {
+    font-size: 1.65rem;
+  }
+
+  .command-pill,
+  .tool-button,
+  .connection-pill {
+    min-height: 48px;
+    padding: 0 16px;
+  }
+
+  .status-strip article,
+  .summary-grid article {
+    min-height: 78px;
+    padding: 12px 14px;
+  }
+
+  .status-strip strong,
+  .summary-grid strong {
+    font-size: 1.45rem;
+  }
+
+  .tile-board {
+    padding: 10px;
+  }
+
+  .tile {
+    min-height: 98px;
+    padding: 14px;
+  }
+
+  .tile strong {
+    font-size: 1.45rem;
+  }
+
+  .panel.active {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .panel-head {
+    margin-bottom: 14px;
+  }
+
+  .mode-switch button {
+    min-height: 48px;
+  }
+
+  .stop-button {
+    min-height: 64px;
+  }
+
+  .control-grid {
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 14px;
+  }
+
+  .axis-bank {
+    height: 100%;
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .axis-row {
+    min-height: 0;
+    padding: 16px;
+    grid-template-columns: 1fr 118px 118px;
+  }
+
+  .axis-row strong {
+    font-size: 1.9rem;
+  }
+
+  .jog-button {
+    min-height: 0;
+    height: 100%;
+    font-size: 2.25rem;
+  }
+
+  .tcp-bank {
+    height: 100%;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .tcp-bank .tcp-card {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .tcp-translate {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .tcp-pad {
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .tcp-z-controls {
+    gap: 10px;
+  }
+
+  .tcp-bank .tcp-jog-button {
+    min-height: 0;
+    height: 100%;
+    font-size: 2rem;
+  }
+
+  .tcp-speed-field {
+    padding: 12px;
+    grid-template-columns: 142px minmax(0, 1fr);
+    gap: 10px 12px;
+  }
+
+  .tcp-bank .tcp-card h3 {
+    font-size: 1.25rem;
+  }
+
+  .tcp-bank .eyebrow,
+  .tcp-rotation-grid span,
+  .tcp-speed-field label {
+    font-size: 1.05rem;
+  }
+
+  .tcp-speed-field .speed-row {
+    grid-template-columns: minmax(0, 1fr) 126px;
+  }
+
+  .tcp-speed-field output {
+    min-width: 118px;
+    font-size: 1.35rem;
+  }
+
+  .tcp-rotation-grid {
+    height: 100%;
+    grid-template-columns: minmax(86px, 1fr) 118px 118px;
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .tcp-rotation-grid .tcp-jog-button {
+    min-height: 0;
+  }
+
+  .control-side {
+    gap: 14px;
+  }
+
+  .field,
+  .joint-readout {
+    padding: 14px;
+  }
+
+  .speed-presets button,
+  .home-button {
+    min-height: 48px;
+  }
+
+  .joint-readout {
+    gap: 10px 12px;
   }
 }
