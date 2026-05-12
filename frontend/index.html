@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SMAN ABB GoFa Dashboard</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=timeline-height-2" />
+    <link rel="stylesheet" href="/assets/styles.css?v=fhtw-logo-1" />
   </head>
   <body>
     <main class="shell">
@@ -14,21 +14,28 @@
           <p class="subtitle">Digital Twin und ROS2-Telemetrie live vom Roboter</p>
         </div>
         <div class="topbar-actions">
-          <div class="view-switcher" role="tablist" aria-label="Dashboard Ansicht">
-            <button class="view-tab active" id="userViewTab" type="button" role="tab" aria-selected="true" data-view="user">
-              Betrieb
-            </button>
-            <button class="view-tab" id="maintenanceViewTab" type="button" role="tab" aria-selected="false" data-view="maintenance">
-              Maintenance
-            </button>
-            <button class="view-tab" id="developerViewTab" type="button" role="tab" aria-selected="false" data-view="developer">
-              Developer
-            </button>
-          </div>
-          <button class="demo-button" id="demoModeButton" type="button">Demo</button>
-          <div class="status" id="connectionStatus">
-            <span class="dot"></span>
-            <span>Verbinde...</span>
+          <img
+            class="fhtw-logo"
+            src="/assets/FHTW%20Logo/FHTW_Logo_Farbe_transparent.png"
+            alt="FH Technikum Wien"
+          />
+          <div class="topbar-controls">
+            <div class="view-switcher" role="tablist" aria-label="Dashboard Ansicht">
+              <button class="view-tab active" id="userViewTab" type="button" role="tab" aria-selected="true" data-view="user">
+                Betrieb
+              </button>
+              <button class="view-tab" id="maintenanceViewTab" type="button" role="tab" aria-selected="false" data-view="maintenance">
+                Maintenance
+              </button>
+              <button class="view-tab" id="developerViewTab" type="button" role="tab" aria-selected="false" data-view="developer">
+                Developer
+              </button>
+            </div>
+            <button class="demo-button" id="demoModeButton" type="button">Demo</button>
+            <div class="status" id="connectionStatus">
+              <span class="dot"></span>
+              <span>Verbinde...</span>
+            </div>
           </div>
         </div>
       </section>

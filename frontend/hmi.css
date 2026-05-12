@@ -223,6 +223,13 @@ a {
   border-radius: 8px;
 }
 
+.fhtw-logo {
+  display: block;
+  width: clamp(92px, 9vw, 132px);
+  height: auto;
+  flex: 0 0 auto;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--accent);
@@ -248,6 +255,7 @@ h2 {
 .top-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -832,6 +840,16 @@ output {
   .panel-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .fhtw-logo {
+    width: 116px;
+    margin-left: auto;
+    order: 3;
+  }
+
+  .top-actions {
+    order: 1;
   }
 
   .status-strip,
