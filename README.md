@@ -35,6 +35,12 @@ GoFa HMI öffnen:
 http://localhost:8080/hmi
 ```
 
+Optional verschlüsselt über den Nginx-Reverse-Proxy:
+
+```text
+https://localhost:8443/hmi
+```
+
 Der Container enthält Backend, Frontend, ROS2-Workspace und Dashboard-Assets im Image. Nach Codeänderungen an `backend/`, `frontend/`, `tools/`, `ABB/` oder `ros2_ws/src/` immer neu bauen:
 
 ```bash
@@ -66,6 +72,56 @@ Das GoFa HMI ist ein Addon zum bestehenden Dashboard. Das normale Dashboard blei
 ```text
 http://localhost:8080/hmi
 ```
+
+### HMI-Login verschlüsseln
+
+Für HTTPS ist ein optionaler Nginx-Reverse-Proxy vorbereitet. Das kostet lokal nichts:
+
+- Self-Signed-Zertifikat: kostenlos, Browser zeigt aber eine Warnung, bis das Zertifikat vertraut wird.
+- Let's Encrypt: kostenlos, braucht aber normalerweise einen erreichbaren DNS-Namen beziehungsweise eine passende DNS-Challenge.
+- Gekauftes Zertifikat: nur nötig, wenn eure Infrastruktur das verlangt.
+
+Lokales Testzertifikat erzeugen:
+
+```bash
+cd ~/SMAN
+./docker/create-local-cert.sh certs localhost
+```
+
+HTTPS-Proxy starten:
+
+```bash
+docker compose --profile https up -d --build --force-recreate
+```
+
+Danach das HMI verschlüsselt öffnen:
+
+```text
+https://localhost:8443/hmi
+```
+
+Im Compose-Setup bindet FastAPI standardmäßig nur an `127.0.0.1:8080`; von außen soll dann der HTTPS-Port genutzt werden. Falls du das alte Verhalten für reine Labortests brauchst:
+
+```text
+SMAN_HTTP_HOST=0.0.0.0
+```
+
+Das HMI selbst ist im Compose-Setup zusätzlich auf HTTPS festgelegt. Ein direkter Aufruf von `http://localhost:8080/hmi` wird auf `https://localhost:8443/hmi` umgeleitet; direkte HMI-API-Aufrufe über HTTP werden blockiert. Falls ein anderer öffentlicher HTTPS-Name verwendet wird:
+
+```text
+SMAN_PUBLIC_HTTPS_URL=https://sman.local:8443
+```
+
+Für Zugriff von einem Tablet oder aus dem Roboternetz in `.env` den Hostnamen oder die IP setzen und ein passendes Zertifikat verwenden:
+
+```text
+SMAN_SERVER_NAME=sman.local
+SMAN_HTTPS_PORT=8443
+SMAN_TLS_CERT_FILE=sman-local.crt
+SMAN_TLS_KEY_FILE=sman-local.key
+```
+
+Die Zertifikate liegen lokal im ignorierten Ordner `certs/` und werden nur in den Nginx-Container gemountet. Der Nginx-Proxy setzt `X-Forwarded-Proto: https`; dadurch markiert das Backend das HMI-Session-Cookie bei HTTPS automatisch als `Secure`.
 
 Die HMI-Oberfläche ist für Tablet-Bedienung ausgelegt und gleichzeitig als Basis für Unity/Meta Quest 3 vorbereitet:
 

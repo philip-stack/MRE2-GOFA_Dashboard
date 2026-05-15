@@ -26,7 +26,7 @@ from diagnostic_msgs.msg import DiagnosticArray
 from fastapi import Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from rclpy.executors import ExternalShutdownException
 from rclpy.action import ActionClient
@@ -74,6 +74,9 @@ HMI_AUTH_PASSWORD = os.getenv("SMAN_HMI_PASSWORD", "robotics")
 HMI_AUTH_COOKIE = "sman_hmi_session"
 HMI_AUTH_SECRET = os.getenv("SMAN_HMI_SESSION_SECRET", "sman-hmi-local-session-secret")
 HMI_AUTH_COOKIE_SECURE = os.getenv("SMAN_HMI_COOKIE_SECURE", "0").lower() in {"1", "true", "yes"}
+HMI_REQUIRE_HTTPS = os.getenv("SMAN_HMI_REQUIRE_HTTPS", "1").lower() in {"1", "true", "yes"}
+HMI_HTTPS_PORT = os.getenv("SMAN_HTTPS_PORT", "8443")
+HMI_PUBLIC_HTTPS_URL = os.getenv("SMAN_PUBLIC_HTTPS_URL", "").rstrip("/")
 
 MESSAGE_TYPES = {
     "sensor_msgs/msg/JointState": JointState,
@@ -1751,8 +1754,26 @@ app.add_middleware(
 
 @app.middleware("http")
 async def hmi_no_cache(request: Request, call_next: Any) -> Response:
+    path = request.url.path
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
+    secure_request = request.url.scheme == "https" or forwarded_proto == "https"
+    hmi_path = path == "/hmi" or path.startswith("/api/hmi/") or path.startswith("/assets/hmi.")
+
+    if HMI_REQUIRE_HTTPS and hmi_path and not secure_request:
+        if request.method in {"GET", "HEAD"}:
+            if HMI_PUBLIC_HTTPS_URL:
+                target = f"{HMI_PUBLIC_HTTPS_URL}{path}"
+            else:
+                host = request.url.hostname or "localhost"
+                port = "" if HMI_HTTPS_PORT == "443" else f":{HMI_HTTPS_PORT}"
+                target = f"https://{host}{port}{path}"
+            if request.url.query:
+                target = f"{target}?{request.url.query}"
+            return RedirectResponse(target, status_code=307)
+        return Response("HMI requires HTTPS", status_code=403)
+
     response = await call_next(request)
-    if request.url.path == "/hmi" or request.url.path.startswith("/assets/hmi."):
+    if path == "/hmi" or path.startswith("/assets/hmi."):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -1893,12 +1914,17 @@ def require_hmi_auth(request: Request) -> None:
         raise HTTPException(status_code=401, detail="HMI login required")
 
 
-def set_hmi_auth_cookie(response: Response, token: str) -> None:
+def is_hmi_secure_request(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
+    return HMI_AUTH_COOKIE_SECURE or request.url.scheme == "https" or forwarded_proto == "https"
+
+
+def set_hmi_auth_cookie(request: Request, response: Response, token: str) -> None:
     response.set_cookie(
         HMI_AUTH_COOKIE,
         token,
         httponly=True,
-        secure=HMI_AUTH_COOKIE_SECURE,
+        secure=is_hmi_secure_request(request),
         samesite="strict",
         path="/",
     )
@@ -1911,12 +1937,12 @@ async def hmi_auth_status(request: Request) -> dict[str, Any]:
 
 
 @app.post("/api/hmi/auth/login")
-async def hmi_auth_login(payload: dict[str, Any], response: Response) -> dict[str, Any]:
+async def hmi_auth_login(payload: dict[str, Any], request: Request, response: Response) -> dict[str, Any]:
     username = str(payload.get("username", ""))
     password = str(payload.get("password", ""))
     if not hmac.compare_digest(username, HMI_AUTH_USERNAME) or not hmac.compare_digest(password, HMI_AUTH_PASSWORD):
         raise HTTPException(status_code=401, detail="Username oder Passwort ist falsch")
-    set_hmi_auth_cookie(response, create_hmi_session(username))
+    set_hmi_auth_cookie(request, response, create_hmi_session(username))
     return {"authenticated": True, "username": username}
 
 

@@ -22,6 +22,13 @@ services:
     container_name: sman-gofa-dashboard
     network_mode: host
     ipc: host
+    command:
+      - uvicorn
+      - backend.app:app
+      - --host
+      - "${SMAN_HTTP_HOST:-127.0.0.1}"
+      - --port
+      - "${SMAN_HTTP_PORT:-8080}"
     depends_on:
       sman-dashboard-db:
         condition: service_healthy
@@ -42,6 +49,13 @@ services:
       SMAN_SMTP_USER: "${SMAN_SMTP_USER:-}"
       SMAN_SMTP_PASSWORD: "${SMAN_SMTP_PASSWORD:-}"
       SMAN_MAIL_FROM: "${SMAN_MAIL_FROM:-}"
+      SMAN_HMI_USERNAME: "${SMAN_HMI_USERNAME:-Default User}"
+      SMAN_HMI_PASSWORD: "${SMAN_HMI_PASSWORD:-robotics}"
+      SMAN_HMI_SESSION_SECRET: "${SMAN_HMI_SESSION_SECRET:-sman-hmi-local-session-secret}"
+      SMAN_HMI_COOKIE_SECURE: "${SMAN_HMI_COOKIE_SECURE:-0}"
+      SMAN_HMI_REQUIRE_HTTPS: "${SMAN_HMI_REQUIRE_HTTPS:-1}"
+      SMAN_HTTPS_PORT: "${SMAN_HTTPS_PORT:-8443}"
+      SMAN_PUBLIC_HTTPS_URL: "${SMAN_PUBLIC_HTTPS_URL:-}"
       SMAN_HOST_INTERFACE: "${SMAN_HOST_INTERFACE:-}"
       SMAN_EXTRA_HOST_IP: "${SMAN_EXTRA_HOST_IP:-}"
       ROS_DISCOVER_TOPICS: "${ROS_DISCOVER_TOPICS:-1}"
@@ -54,6 +68,25 @@ services:
         ]
     volumes:
       - ./data:/app/data
+    restart: unless-stopped
+
+  sman-hmi-nginx:
+    image: nginx:1.27-alpine
+    container_name: sman-hmi-nginx
+    network_mode: host
+    depends_on:
+      - sman-gofa-dashboard
+    profiles:
+      - https
+    environment:
+      SMAN_HTTPS_PORT: "${SMAN_HTTPS_PORT:-8443}"
+      SMAN_SERVER_NAME: "${SMAN_SERVER_NAME:-localhost}"
+      SMAN_TLS_CERT_FILE: "${SMAN_TLS_CERT_FILE:-sman-local.crt}"
+      SMAN_TLS_KEY_FILE: "${SMAN_TLS_KEY_FILE:-sman-local.key}"
+      DOLLAR: "$$"
+    volumes:
+      - ./docker/nginx/templates:/etc/nginx/templates:ro
+      - ./certs:/etc/nginx/certs:ro
     restart: unless-stopped
 
 volumes:

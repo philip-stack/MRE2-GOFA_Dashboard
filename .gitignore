@@ -7,6 +7,7 @@ playwright-report/
 .codex
 data/
 .env
+certs/
 
 # ROS/colcon build output and local runtime logs
 log/
