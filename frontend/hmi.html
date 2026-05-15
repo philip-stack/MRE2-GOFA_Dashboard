@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GoFa HMI</title>
-    <link rel="stylesheet" href="/assets/hmi.css?v=project-credit-2" />
+    <link rel="stylesheet" href="/assets/hmi.css?v=mobile-joystick-1" />
   </head>
   <body class="auth-pending">
     <section class="login-screen" id="loginScreen" aria-label="HMI Login">
@@ -124,6 +124,37 @@
         </div>
 
         <div class="control-grid">
+          <section class="mobile-joystick-panel" id="mobileJoystickPanel" aria-label="Mobile Joystick Steuerung">
+            <div class="mobile-joystick-head">
+              <div>
+                <p class="eyebrow">Mobile Jog</p>
+                <h3>Joystick</h3>
+              </div>
+              <select id="mobileJoystickTarget" aria-label="Joystick Ziel">
+                <option value="axis:0">J1</option>
+                <option value="axis:1">J2</option>
+                <option value="axis:2">J3</option>
+                <option value="axis:3">J4</option>
+                <option value="axis:4">J5</option>
+                <option value="axis:5">J6</option>
+                <option value="tcp:xy">TCP XY</option>
+                <option value="tcp:z">TCP Z</option>
+                <option value="tcp:rx">Roll</option>
+                <option value="tcp:ry">Pitch</option>
+                <option value="tcp:rz">Yaw</option>
+              </select>
+            </div>
+            <div class="mobile-joystick" id="mobileJoystick" role="application" aria-label="Joystick halten und ziehen">
+              <div class="mobile-joystick-ring">
+                <span class="mobile-joystick-label top">+</span>
+                <span class="mobile-joystick-label right">+</span>
+                <span class="mobile-joystick-label bottom">-</span>
+                <span class="mobile-joystick-label left">-</span>
+                <div class="mobile-joystick-knob" id="mobileJoystickKnob"></div>
+              </div>
+            </div>
+            <output class="mobile-joystick-status" id="mobileJoystickStatus">Joystick bereit</output>
+          </section>
           <section class="axis-bank" id="axisBank" aria-label="Achssteuerung"></section>
           <section class="tcp-bank" id="tcpJogBank" aria-label="TCP Linearsteuerung" hidden>
             <article class="tcp-card tcp-translate">
@@ -318,6 +349,6 @@
       Smart Manufacturing Projekt 2026 · Elias Bitsch · Viktoriia Ovdiienko · Philip Stix
     </footer>
 
-    <script src="/assets/hmi.js?v=hmi-home-dialog-1" defer></script>
+    <script src="/assets/hmi.js?v=mobile-joystick-1" defer></script>
   </body>
 </html>

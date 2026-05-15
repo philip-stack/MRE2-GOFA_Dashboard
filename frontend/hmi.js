@@ -40,8 +40,14 @@ const homeConfirmOverlay = document.getElementById("homeConfirmOverlay");
 const homeConfirmCancel = document.getElementById("homeConfirmCancel");
 const homeConfirmOk = document.getElementById("homeConfirmOk");
 const hmiShell = document.querySelector(".hmi-shell");
+const mobileJoystickPanel = document.getElementById("mobileJoystickPanel");
+const mobileJoystick = document.getElementById("mobileJoystick");
+const mobileJoystickKnob = document.getElementById("mobileJoystickKnob");
+const mobileJoystickTarget = document.getElementById("mobileJoystickTarget");
+const mobileJoystickStatus = document.getElementById("mobileJoystickStatus");
 const ROBOT_STALE_AFTER_SEC = 2.5;
 const CLIENT_SESSION_KEY = "sman-hmi-client-session";
+const MOBILE_JOYSTICK_DEADZONE = 0.28;
 
 const state = {
   socket: null,
@@ -56,6 +62,8 @@ const state = {
   activePointerId: null,
   jogMode: "axis",
   jogTimer: null,
+  joystickPointerId: null,
+  joystickCommand: null,
   reconnectTimer: null,
   lastJointAt: null,
   egm: null,
@@ -309,6 +317,7 @@ function showHmi(username = "Default User") {
 function fitHmiToViewport() {
   if (!state.authenticated || !hmiShell) return;
   document.documentElement.style.setProperty("--hmi-scale", "1");
+  if (window.matchMedia("(max-width: 760px)").matches) return;
   const naturalHeight = hmiShell.scrollHeight;
   const naturalWidth = hmiShell.scrollWidth;
   const scale = Math.min(
@@ -403,14 +412,17 @@ function handleJogError(error) {
 function clearJogButtons() {
   document.querySelectorAll(".jog-button.active").forEach((button) => button.classList.remove("active"));
   document.querySelectorAll(".tcp-jog-button.active").forEach((button) => button.classList.remove("active"));
+  mobileJoystick?.classList.remove("active");
 }
 
 async function stopJog(reason = "operator") {
   state.activeJog = null;
   state.activePointerId = null;
+  state.joystickCommand = null;
   window.clearInterval(state.jogTimer);
   state.jogTimer = null;
   clearJogButtons();
+  resetMobileJoystick();
   motionValue.textContent = "Idle";
   try {
     await postJson("/api/hmi/jog/stop", { reason });
@@ -420,10 +432,10 @@ async function stopJog(reason = "operator") {
   }
 }
 
-function startJog(button, pointerId = null) {
-  const isTcpJog = button.classList.contains("tcp-jog-button");
-  const axis = isTcpJog ? button.dataset.tcpAxis : Number(button.dataset.axis);
-  const direction = Number(button.dataset.direction);
+function startJogCommand(command, pointerId = null, activeElement = null) {
+  const isTcpJog = command.mode === "tcp";
+  const axis = command.axis;
+  const direction = Number(command.direction);
   if (isTcpJog) {
     if (!["x", "y", "z", "rx", "ry", "rz"].includes(axis) || ![-1, 1].includes(direction)) return;
     state.activeJog = { mode: "tcp", axis, direction };
@@ -433,7 +445,7 @@ function startJog(button, pointerId = null) {
   }
   state.activePointerId = pointerId;
   clearJogButtons();
-  button.classList.add("active");
+  activeElement?.classList.add("active");
   const startEndpoint = isTcpJog ? "/api/hmi/tcp/start" : "/api/hmi/jog/start";
   const heartbeatEndpoint = isTcpJog ? "/api/hmi/tcp/heartbeat" : "/api/hmi/jog/heartbeat";
   sendJog(startEndpoint).catch(handleJogError);
@@ -441,6 +453,101 @@ function startJog(button, pointerId = null) {
   state.jogTimer = window.setInterval(() => {
     sendJog(heartbeatEndpoint).catch(handleJogError);
   }, 320);
+}
+
+function startJog(button, pointerId = null) {
+  const isTcpJog = button.classList.contains("tcp-jog-button");
+  startJogCommand(
+    {
+      mode: isTcpJog ? "tcp" : "axis",
+      axis: isTcpJog ? button.dataset.tcpAxis : Number(button.dataset.axis),
+      direction: Number(button.dataset.direction),
+    },
+    pointerId,
+    button,
+  );
+}
+
+function joystickCommandKey(command) {
+  return command ? `${command.mode}:${command.axis}:${command.direction}` : "";
+}
+
+function resetMobileJoystick() {
+  if (mobileJoystickKnob) {
+    mobileJoystickKnob.style.transform = "translate(-50%, -50%)";
+  }
+  mobileJoystick?.classList.remove("active");
+  if (mobileJoystickStatus && !state.activeJog) {
+    mobileJoystickStatus.textContent = "Joystick bereit";
+  }
+}
+
+function commandFromJoystick(dx, dy) {
+  const target = mobileJoystickTarget?.value || "axis:0";
+  const [mode, value] = target.split(":");
+  const magnitude = Math.hypot(dx, dy);
+  if (magnitude < MOBILE_JOYSTICK_DEADZONE) return null;
+
+  if (mode === "axis") {
+    return {
+      mode: "axis",
+      axis: Number(value),
+      direction: dx >= 0 ? 1 : -1,
+      label: `J${Number(value) + 1} ${dx >= 0 ? "+" : "-"}`,
+    };
+  }
+
+  if (value === "xy") {
+    if (Math.abs(dx) > Math.abs(dy)) {
+      return {
+        mode: "tcp",
+        axis: "y",
+        direction: dx < 0 ? 1 : -1,
+        label: dx < 0 ? "TCP Links" : "TCP Rechts",
+      };
+    }
+    return {
+      mode: "tcp",
+      axis: "x",
+      direction: dy < 0 ? 1 : -1,
+      label: dy < 0 ? "TCP Vor" : "TCP Zurück",
+    };
+  }
+
+  return {
+    mode: "tcp",
+    axis: value,
+    direction: dy < 0 || dx > 0 ? 1 : -1,
+    label: `${value.toUpperCase()} ${dy < 0 || dx > 0 ? "+" : "-"}`,
+  };
+}
+
+function updateMobileJoystick(event) {
+  if (!mobileJoystick || state.joystickPointerId !== event.pointerId) return;
+  const rect = mobileJoystick.getBoundingClientRect();
+  const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const rawX = (event.clientX - centerX) / radius;
+  const rawY = (event.clientY - centerY) / radius;
+  const magnitude = Math.hypot(rawX, rawY);
+  const limit = magnitude > 1 ? 1 / magnitude : 1;
+  const dx = rawX * limit;
+  const dy = rawY * limit;
+  mobileJoystickKnob.style.transform = `translate(calc(-50% + ${dx * 56}px), calc(-50% + ${dy * 56}px))`;
+
+  const command = commandFromJoystick(dx, dy);
+  const nextKey = joystickCommandKey(command);
+  if (!command) {
+    if (state.joystickCommand) stopJog("joystick-center");
+    state.joystickCommand = null;
+    mobileJoystickStatus.textContent = "Mitte";
+    return;
+  }
+  if (nextKey === state.joystickCommand) return;
+  state.joystickCommand = nextKey;
+  mobileJoystickStatus.textContent = command.label;
+  startJogCommand(command, event.pointerId, mobileJoystick);
 }
 
 function installControls() {
@@ -478,17 +585,41 @@ function installControls() {
     startJog(button, event.pointerId);
   });
 
+  mobileJoystick?.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    state.joystickPointerId = event.pointerId;
+    mobileJoystick.setPointerCapture?.(event.pointerId);
+    updateMobileJoystick(event);
+  });
+  mobileJoystick?.addEventListener("pointermove", (event) => {
+    if (state.joystickPointerId === event.pointerId) {
+      event.preventDefault();
+      updateMobileJoystick(event);
+    }
+  });
+  mobileJoystickTarget?.addEventListener("change", () => {
+    if (state.joystickPointerId !== null) stopJog("joystick-target-change");
+    resetMobileJoystick();
+  });
+
   window.addEventListener("pointerup", (event) => {
-    if (state.activeJog && (state.activePointerId === null || state.activePointerId === event.pointerId)) {
+    if (state.joystickPointerId === event.pointerId) {
+      state.joystickPointerId = null;
+      stopJog("joystick-release");
+    } else if (state.activeJog && (state.activePointerId === null || state.activePointerId === event.pointerId)) {
       stopJog("release");
     }
   });
   window.addEventListener("pointercancel", (event) => {
-    if (state.activeJog && (state.activePointerId === null || state.activePointerId === event.pointerId)) {
+    if (state.joystickPointerId === event.pointerId) {
+      state.joystickPointerId = null;
+      stopJog("joystick-cancel");
+    } else if (state.activeJog && (state.activePointerId === null || state.activePointerId === event.pointerId)) {
       stopJog("cancel");
     }
   });
   window.addEventListener("blur", () => {
+    state.joystickPointerId = null;
     if (state.activeJog) stopJog("window-blur");
   });
 

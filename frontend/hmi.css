@@ -465,6 +465,10 @@ h2 {
   gap: 10px;
 }
 
+.mobile-joystick-panel {
+  display: none;
+}
+
 .axis-bank {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -613,6 +617,111 @@ h2 {
 
 .tcp-z-controls .tcp-jog-button {
   min-height: 58px;
+}
+
+.mobile-joystick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mobile-joystick-head h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.mobile-joystick-head select {
+  min-height: 46px;
+  min-width: 132px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+  font-weight: 900;
+}
+
+.mobile-joystick {
+  width: min(72vw, 280px);
+  aspect-ratio: 1;
+  margin: 4px auto 0;
+  border-radius: 50%;
+  touch-action: none;
+  user-select: none;
+}
+
+.mobile-joystick-ring {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 2px solid rgba(88, 166, 255, 0.38);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, rgba(23, 195, 165, 0.2) 0 18%, transparent 19%),
+    linear-gradient(90deg, transparent calc(50% - 1px), rgba(168, 180, 191, 0.28) 50%, transparent calc(50% + 1px)),
+    linear-gradient(0deg, transparent calc(50% - 1px), rgba(168, 180, 191, 0.28) 50%, transparent calc(50% + 1px)),
+    var(--surface-2);
+  box-shadow: inset 0 0 34px rgba(0, 0, 0, 0.28);
+}
+
+.mobile-joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  transition: transform 80ms ease;
+}
+
+.mobile-joystick.active .mobile-joystick-knob {
+  transition: none;
+  background: #58a6ff;
+}
+
+.mobile-joystick-label {
+  position: absolute;
+  color: rgba(243, 247, 251, 0.62);
+  font-size: 1.4rem;
+  font-weight: 950;
+  pointer-events: none;
+}
+
+.mobile-joystick-label.top {
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+}
+
+.mobile-joystick-label.right {
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.mobile-joystick-label.bottom {
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+}
+
+.mobile-joystick-label.left {
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.mobile-joystick-status {
+  display: block;
+  min-height: 24px;
+  color: var(--muted);
+  font-weight: 900;
+  text-align: center;
 }
 
 .control-side {
@@ -905,6 +1014,122 @@ output {
     width: min(100vw - 20px, 1840px);
     margin: -4px auto 8px;
     font-size: 9px;
+  }
+}
+
+@media (max-width: 760px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body.authenticated {
+    overflow: auto;
+  }
+
+  .hmi-shell {
+    width: 100%;
+    min-height: 100vh;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    transform: none;
+  }
+
+  .hmi-topbar {
+    gap: 10px;
+  }
+
+  .hmi-topbar h1 {
+    font-size: 2rem;
+  }
+
+  .top-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .top-actions .command-pill,
+  .top-actions .connection-pill,
+  .top-actions .fhtw-logo {
+    grid-column: 1 / -1;
+  }
+
+  .tool-button,
+  .stop-button,
+  .home-button {
+    min-height: 50px;
+  }
+
+  .status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tile-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tile {
+    min-height: 70px;
+  }
+
+  .panel {
+    padding: 12px;
+  }
+
+  .panel-head {
+    gap: 12px;
+  }
+
+  .control-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  #robotPanel .axis-bank,
+  #robotPanel .tcp-bank,
+  #robotPanel .tcp-speed-field {
+    display: none !important;
+  }
+
+  .mobile-joystick-panel {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-2);
+    padding: 12px;
+    display: grid;
+    gap: 14px;
+  }
+
+  .mobile-joystick-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mobile-joystick-head select {
+    width: 100%;
+  }
+
+  .mobile-joystick {
+    width: min(78vw, 300px);
+  }
+
+  .control-side {
+    grid-row: auto;
+  }
+
+  .joint-readout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .speed-presets {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .speed-presets button {
+    padding: 0 6px;
+    font-size: 0.82rem;
   }
 }
 

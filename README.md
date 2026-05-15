@@ -129,6 +129,7 @@ Die HMI-Oberfläche ist für Tablet-Bedienung ausgelegt und gleichzeitig als Bas
 - optionaler transparenter Modus für MR/WebView-Overlays
 - achsweises Hold-to-jog für `J1` bis `J6`
 - umschaltbarer Linear-Modus für TCP-Jog: Vor/Zurück, Links/Rechts, Z+/Z- sowie Roll/Pitch/Yaw
+- mobile Handy-Ansicht mit Joystick-Steuerung und Zielauswahl für `J1` bis `J6`, `TCP XY`, `Z`, Roll, Pitch und Yaw
 - Stop-Buttons in den Bedienpanels
 - Home-Funktion über `Home anfahren`
 - Live-Achspositionen und Speed-Gauges
