@@ -83,6 +83,8 @@ services:
       SMAN_SERVER_NAME: "${SMAN_SERVER_NAME:-localhost}"
       SMAN_TLS_CERT_FILE: "${SMAN_TLS_CERT_FILE:-sman-local.crt}"
       SMAN_TLS_KEY_FILE: "${SMAN_TLS_KEY_FILE:-sman-local.key}"
+      SMAN_UPSTREAM_HOST: "${SMAN_UPSTREAM_HOST:-127.0.0.1}"
+      SMAN_UPSTREAM_PORT: "${SMAN_UPSTREAM_PORT:-8080}"
       DOLLAR: "$$"
     volumes:
       - ./docker/nginx/templates:/etc/nginx/templates:ro

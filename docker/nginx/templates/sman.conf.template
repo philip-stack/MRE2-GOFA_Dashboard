@@ -16,7 +16,7 @@ server {
     error_page 497 =307 https://${DOLLAR}http_host${DOLLAR}request_uri;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://${SMAN_UPSTREAM_HOST}:${SMAN_UPSTREAM_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;

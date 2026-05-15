@@ -65,6 +65,43 @@ Falls `SMAN_DATABASE_URL` nicht gesetzt ist, nutzt das Backend als Fallback weit
 
 Die Datei `.env` wird von Docker Compose für lokale Zugangsdaten gelesen, aber nicht ins Image kopiert.
 
+### Windows Docker Desktop
+
+Unter Docker Desktop fuer Windows funktioniert `network_mode: host` nicht wie unter Linux. Fuer den Windows-Start ist deshalb die zusaetzliche Compose-Datei `docker-compose.windows.yml` vorbereitet. Sie veroeffentlicht das Dashboard auf `127.0.0.1:8080`, verbindet den Dashboard-Container ueber `host.docker.internal` mit PostgreSQL und routet den HTTPS-Proxy ebenfalls ueber den Windows-Host.
+
+Start ohne HTTPS:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d --build --force-recreate
+```
+
+Danach im Browser oeffnen:
+
+```text
+http://127.0.0.1:8080
+```
+
+Fuer das HMI ueber HTTPS zuerst ein lokales Zertifikat erzeugen. Wenn `openssl` unter Windows nicht installiert ist, kann das direkt ueber Docker passieren:
+
+```powershell
+New-Item -ItemType Directory -Force -Path certs
+docker run --rm -v "${PWD}/certs:/certs" alpine:3.20 sh -lc "apk add --no-cache openssl && openssl req -x509 -newkey rsa:4096 -sha256 -days 825 -nodes -keyout /certs/sman-local.key -out /certs/sman-local.crt -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'"
+```
+
+Dann den HTTPS-Proxy starten:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.windows.yml --profile https up -d --build --force-recreate
+```
+
+Das HMI liegt dann unter:
+
+```text
+https://127.0.0.1:8443/hmi
+```
+
+Bei einem Self-Signed-Zertifikat zeigt der Browser eine Warnung. Fuer lokale Tests kann die Ausnahme bestaetigt werden.
+
 ## GoFa HMI
 
 Das GoFa HMI ist ein Addon zum bestehenden Dashboard. Das normale Dashboard bleibt unter `/` verfügbar, das HMI liegt unter:

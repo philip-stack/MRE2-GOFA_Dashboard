@@ -8,6 +8,7 @@ playwright-report/
 data/
 .env
 certs/
+docker-compose.override.yml
 
 # ROS/colcon build output and local runtime logs
 log/
