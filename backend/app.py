@@ -1235,6 +1235,15 @@ class DashboardPersistence:
                 ORDER BY axis
                 """
             ).fetchall()
+            axis_velocity_rows = db.execute(
+                f"""
+                SELECT {bucket_expr} AS t, axis, COALESCE(MAX(max_velocity), 0) AS max_velocity
+                FROM axis_agg
+                WHERE bucket >= {since}
+                GROUP BY t, axis
+                ORDER BY t, axis
+                """
+            ).fetchall()
             position_rows = db.execute(
                 f"""
                 SELECT axis,
@@ -1289,6 +1298,13 @@ class DashboardPersistence:
             for row in position_rows
         ]
 
+        axis_velocity_series = []
+        velocity_by_axis: dict[int, list[float]] = {}
+        for row in axis_velocity_rows:
+            velocity_by_axis.setdefault(int(row["axis"]), []).append(float(row["max_velocity"]))
+        for axis in sorted(velocity_by_axis):
+            axis_velocity_series.append({"axis": axis, "values": velocity_by_axis[axis]})
+
         return {
             "window": window,
             "mode": "history",
@@ -1298,6 +1314,7 @@ class DashboardPersistence:
             "points": points,
             "axis_positions": axis_positions,
             "axis_wear": axis_wear,
+            "axis_velocity_series": axis_velocity_series,
         }
 
     def send_pending_mail(self) -> None:

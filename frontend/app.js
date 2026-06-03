@@ -31,6 +31,7 @@ const viewTabs = [...document.querySelectorAll(".view-tab")];
 const dashboardViews = [...document.querySelectorAll("[data-dashboard-view]")];
 const graphWindowEl = document.getElementById("graphWindow");
 const jointActivityValueEl = document.getElementById("jointActivityValue");
+const jointActivityLegendEl = document.getElementById("jointActivityLegend");
 const rateValueEl = document.getElementById("rateValue");
 const jointRangeValueEl = document.getElementById("jointRangeValue");
 const packetFlowValueEl = document.getElementById("packetFlowValue");
@@ -93,10 +94,13 @@ const egmRapidValueEl = document.getElementById("egmRapidValue");
 const egmConvergenceValueEl = document.getElementById("egmConvergenceValue");
 const egmUtilizationDeveloperValueEl = document.getElementById("egmUtilizationDeveloperValue");
 
+const AXIS_ACTIVITY_COLORS = ["#20c997", "#5cc8ff", "#ffbd4a", "#ff5c8a", "#a78bfa", "#7ee787"];
+const AXIS_ACTIVITY_LABELS = ["Achse 1", "Achse 2", "Achse 3", "Achse 4", "Achse 5", "Achse 6"];
+
 const charts = {
-  jointActivity: createSparkline(document.getElementById("jointActivityChart"), {
-    stroke: "#20c997",
-    fill: "rgba(32, 201, 151, 0.12)",
+  jointActivity: createAxisActivityChart(document.getElementById("jointActivityChart"), jointActivityLegendEl, {
+    colors: AXIS_ACTIVITY_COLORS,
+    labels: AXIS_ACTIVITY_LABELS,
     maxSamples: 64,
     yLabel: "rad/s",
     xLabel: "Zeit",
@@ -119,7 +123,7 @@ const charts = {
     color: "#20c997",
     accent: "#ff2a2a",
     yLabel: "rad",
-    labels: ["J1", "J2", "J3", "J4", "J5", "J6"],
+    labels: ["A1", "A2", "A3", "A4", "A5", "A6"],
   }),
   topicFreshness: createBarChart(document.getElementById("topicFreshnessChart"), {
     color: "#5cc8ff",
@@ -187,6 +191,7 @@ const state = {
   eventToastsInitialized: false,
   seenEventIds: new Set(),
   graphWindow: "live",
+  currentJointVelocities: [0, 0, 0, 0, 0, 0],
   maintenanceTimer: null,
 };
 
@@ -349,15 +354,17 @@ function updatePacketFlow(receivedAt) {
 function updateJointWidgets(data) {
   const velocities = data.velocities || [];
   const positions = data.positions || [];
+  const axisVelocities = AXIS_ACTIVITY_LABELS.map((_, index) => Math.abs(Number(velocities[index]) || 0));
   const activity = velocities.length
     ? velocities.reduce((sum, value) => sum + Math.abs(value || 0), 0) / velocities.length
     : 0;
   const range = positions.length ? Math.max(...positions) - Math.min(...positions) : 0;
 
-  jointActivityValueEl.textContent = `${activity.toFixed(3)} rad/s`;
-  jointRangeValueEl.textContent = `${range.toFixed(2)} rad`;
+  jointActivityValueEl.textContent = `Ø ${activity.toFixed(3)} rad/s`;
+  jointRangeValueEl.textContent = `Spanne ${range.toFixed(2)} rad`;
+  state.currentJointVelocities = axisVelocities;
   if (state.graphWindow === "live") {
-    charts.jointActivity.push(activity);
+    charts.jointActivity.push(axisVelocities);
     charts.jointPositions.setValues(positions);
   }
 }
@@ -785,6 +792,7 @@ async function refreshMaintenanceSummary() {
 
 async function refreshGraphHistory() {
   if (state.graphWindow === "live") {
+    charts.jointActivity.push(state.currentJointVelocities);
     charts.jointPositions.setValues(state.jointPositions);
     await refreshMaintenanceSummary();
     return;
@@ -804,7 +812,12 @@ async function refreshGraphHistory() {
       return row?.wear_score ?? 0;
     });
 
-    charts.jointActivity.setSeries(points.map((point) => point.avg_velocity_rad_s || 0), {
+    const axisVelocitySeries = AXIS_ACTIVITY_LABELS.map((_, index) => {
+      const row = (history.axis_velocity_series || []).find((item) => item.axis === index + 1);
+      return row?.values || [];
+    });
+
+    charts.jointActivity.setSeries(axisVelocitySeries, {
       firstLabel: formatDateTime(points[0]?.time),
       lastLabel: formatDateTime(points.at(-1)?.time),
     });
@@ -820,7 +833,7 @@ async function refreshGraphHistory() {
       firstLabel: formatDateTime(points[0]?.time),
       lastLabel: formatDateTime(points.at(-1)?.time),
     });
-    charts.jointPositions.setValues(axisPositions, { labels: ["J1", "J2", "J3", "J4", "J5", "J6"] });
+    charts.jointPositions.setValues(axisPositions, { labels: ["A1", "A2", "A3", "A4", "A5", "A6"] });
     charts.axisWear.setValues(axisWear, { max: 100, labels: ["J1", "J2", "J3", "J4", "J5", "J6"] });
   } catch {
     // Historical charts are optional; live data continues independently.
@@ -1653,6 +1666,108 @@ function niceTick(value) {
   if (Math.abs(value) >= 100) return value.toFixed(0);
   if (Math.abs(value) >= 10) return value.toFixed(1);
   return value.toFixed(2);
+}
+
+function createAxisActivityChart(canvas, legendEl, options = {}) {
+  const labels = options.labels || [];
+  const colors = options.colors || [];
+  const maxSamples = options.maxSamples || 60;
+  const series = labels.map(() => []);
+  const active = labels.map(() => true);
+  let axisMeta = {};
+
+  function renderLegend() {
+    if (!legendEl) return;
+    legendEl.innerHTML = "";
+    labels.forEach((label, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `axis-legend-button${active[index] ? "" : " inactive"}`;
+      button.style.setProperty("--axis-color", colors[index] || "#20c997");
+      button.setAttribute("aria-pressed", String(active[index]));
+      button.innerHTML = `<span class="axis-color-dot" aria-hidden="true"></span><span>${label}</span>`;
+      button.addEventListener("click", () => {
+        const visibleCount = active.filter(Boolean).length;
+        if (visibleCount === active.length) {
+          active.fill(false);
+          active[index] = true;
+        } else {
+          active[index] = !active[index];
+          if (!active.some(Boolean)) active[index] = true;
+        }
+        renderLegend();
+        draw();
+      });
+      legendEl.appendChild(button);
+    });
+  }
+
+  function draw() {
+    if (!canvas) return;
+    const { ctx, width, height } = prepareCanvas(canvas);
+    ctx.clearRect(0, 0, width, height);
+
+    const activeSeries = series.filter((_, index) => active[index]);
+    const allValues = activeSeries.flat();
+    const max = Math.max(0.001, ...allValues, options.fixedMax || 0);
+    const left = 42;
+    const right = width - 16;
+    const top = 18;
+    const bottom = height - 32;
+    const plotWidth = Math.max(1, right - left);
+    const plotHeight = Math.max(1, bottom - top);
+    drawGrid(ctx, width, height, { left, right, top, bottom }, [niceTick(max), niceTick(max * 0.67), niceTick(max * 0.33), "0"]);
+
+    ctx.fillStyle = "rgba(213, 220, 231, 0.8)";
+    ctx.font = "11px Inter, system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(options.yLabel || "", left, 3);
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(axisMeta.firstLabel || options.xLabel || "Live", left, height - 6);
+    ctx.textAlign = "right";
+    ctx.fillText(axisMeta.lastLabel || "jetzt", right, height - 6);
+
+    series.forEach((values, axisIndex) => {
+      if (!active[axisIndex]) return;
+      const points = values.length ? values : [0];
+      ctx.beginPath();
+      points.forEach((value, pointIndex) => {
+        const x = left + (plotWidth * pointIndex) / Math.max(1, points.length - 1);
+        const y = bottom - (Math.max(0, value) / max) * plotHeight;
+        if (pointIndex === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = colors[axisIndex] || "#20c997";
+      ctx.lineWidth = 2.4;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.stroke();
+    });
+  }
+
+  renderLegend();
+
+  return {
+    push(nextValues) {
+      labels.forEach((_, index) => {
+        const value = Array.isArray(nextValues) ? nextValues[index] : nextValues;
+        series[index].push(Number.isFinite(value) ? value : 0);
+        while (series[index].length > maxSamples) series[index].shift();
+      });
+      axisMeta = {};
+      draw();
+    },
+    setSeries(nextSeries, nextMeta = {}) {
+      labels.forEach((_, index) => {
+        const values = Array.isArray(nextSeries?.[index]) ? nextSeries[index] : [];
+        series[index] = values.map((value) => (Number.isFinite(value) ? value : 0));
+      });
+      axisMeta = nextMeta;
+      draw();
+    },
+    draw,
+  };
 }
 
 function createSparkline(canvas, options = {}) {

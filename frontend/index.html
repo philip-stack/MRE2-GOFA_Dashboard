@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SMAN ABB GoFa Dashboard</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=project-credit-2" />
+    <link rel="stylesheet" href="/assets/styles.css?v=axis-meaning-2" />
   </head>
   <body>
     <main class="shell">
@@ -126,16 +126,17 @@
           </article>
         </section>
 
-        <section class="widget-grid user-widget-grid">
+        <section class="widget-grid user-widget-grid activity-widget-grid">
           <article class="panel widget-card">
             <div class="panel-header compact">
               <div>
                 <p class="eyebrow">Live Aktivität</p>
                 <h2>Achsbewegung</h2>
               </div>
-              <span id="jointActivityValue">0.0 rad/s</span>
+              <span id="jointActivityValue">Ø 0.0 rad/s</span>
             </div>
             <canvas class="sparkline" id="jointActivityChart" aria-label="Live Graph Joint Aktivität"></canvas>
+            <div class="axis-chart-legend" id="jointActivityLegend" aria-label="Legende Achsbewegung"></div>
           </article>
           <article class="panel widget-card">
             <div class="panel-header compact">
@@ -153,7 +154,7 @@
                 <p class="eyebrow">Achsen</p>
                 <h2>Positionen</h2>
               </div>
-              <span id="jointRangeValue">0.00 rad</span>
+              <span id="jointRangeValue">Spanne 0.00 rad</span>
             </div>
             <canvas class="bar-chart" id="jointPositionChart" aria-label="Live Balkendiagramm Joint Positionen"></canvas>
           </article>
@@ -455,6 +456,6 @@
         }
       }
     </script>
-    <script type="module" src="/assets/app.js?v=timeline-height-2"></script>
+    <script type="module" src="/assets/app.js?v=axis-meaning-2"></script>
   </body>
 </html>

@@ -374,6 +374,14 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   min-height: 220px;
 }
 
+.widget-card:has(.axis-chart-legend) {
+  min-height: 282px;
+}
+
+.activity-widget-grid .widget-card {
+  min-height: 282px;
+}
+
 .compact {
   padding: 14px 16px;
 }
@@ -388,6 +396,55 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
 .widget-card .sparkline,
 .widget-card .bar-chart {
   padding: 12px 14px 16px;
+}
+
+.activity-widget-grid .widget-card:not(:has(.axis-chart-legend)) .sparkline,
+.activity-widget-grid .widget-card:not(:has(.axis-chart-legend)) .bar-chart {
+  height: 206px;
+}
+
+.axis-chart-legend {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 16px 10px;
+}
+
+.axis-legend-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid rgba(213, 220, 231, 0.12);
+  border-radius: 6px;
+  background: rgba(29, 34, 43, 0.66);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.axis-legend-button .axis-color-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+  background: var(--axis-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--axis-color) 20%, transparent);
+}
+
+.axis-legend-button.inactive {
+  color: var(--muted);
+  background: rgba(29, 34, 43, 0.36);
+}
+
+.axis-legend-button.inactive .axis-color-dot {
+  background: #626b78;
+  box-shadow: 0 0 0 3px rgba(98, 107, 120, 0.16);
 }
 
 .pose-card {
