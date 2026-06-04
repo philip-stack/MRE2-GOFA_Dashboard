@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/assets/hmi.css?v=mobile-joystick-1" />
   </head>
   <body class="auth-pending">
+    <!-- Login is separate from the HMI shell so motion controls are absent until the session is valid. -->
     <section class="login-screen" id="loginScreen" aria-label="HMI Login">
       <form class="login-panel" id="loginForm">
         <p class="eyebrow">Geschützter Zugriff</p>
@@ -24,6 +25,7 @@
       </form>
     </section>
 
+    <!-- Home motion gets a dedicated confirmation because it can command all axes at once. -->
     <section class="confirm-overlay" id="homeConfirmOverlay" hidden aria-label="Home anfahren bestaetigen">
       <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="homeConfirmTitle">
         <p class="eyebrow">Sicherheitsabfrage</p>
@@ -36,7 +38,9 @@
       </div>
     </section>
 
+    <!-- Main HMI shell: JavaScript scales this whole surface on desktop to keep controls visible. -->
     <main class="hmi-shell">
+      <!-- Header keeps session, connection, theme, and navigation controls close to the operator. -->
       <header class="hmi-topbar">
         <div>
           <p class="eyebrow">ABB GoFa</p>
@@ -62,6 +66,7 @@
         </div>
       </header>
 
+      <!-- Live strip separates robot readiness from mere dashboard/WebSocket connectivity. -->
       <section class="status-strip" aria-label="Roboterstatus">
         <article>
           <span>Betrieb</span>
@@ -81,6 +86,7 @@
         </article>
       </section>
 
+      <!-- Panel tiles expose secondary views while keeping jog control as the first active surface. -->
       <section class="tile-board" aria-label="HMI Bereiche">
         <button class="tile active" type="button" data-panel="robotPanel">
           <span>Roboter</span>
@@ -108,6 +114,7 @@
         </button>
       </section>
 
+      <!-- Robot panel sends short heartbeat jog commands for axis and TCP movement. -->
       <section class="panel active" id="robotPanel">
         <div class="panel-head">
           <div>
@@ -155,6 +162,7 @@
             </div>
             <output class="mobile-joystick-status" id="mobileJoystickStatus">Joystick bereit</output>
           </section>
+          <!-- Desktop controls are generated/activated by hmi.js so pointer handling is centralized. -->
           <section class="axis-bank" id="axisBank" aria-label="Achssteuerung"></section>
           <section class="tcp-bank" id="tcpJogBank" aria-label="TCP Linearsteuerung" hidden>
             <article class="tcp-card tcp-translate">
@@ -229,6 +237,7 @@
         </div>
       </section>
 
+      <!-- Speed panel is readout-oriented; actual motion speed limits are enforced by the backend. -->
       <section class="panel" id="speedPanel">
         <div class="panel-head">
           <div>
@@ -259,6 +268,7 @@
         </div>
       </section>
 
+      <!-- Safety panel reserves UI space for HRC zone controls even when backend integration is partial. -->
       <section class="panel" id="safetyPanel">
         <div class="panel-head">
           <div>
@@ -319,6 +329,7 @@
         </div>
       </section>
 
+      <!-- Maintenance panel gives the HMI a small health summary without duplicating the full dashboard. -->
       <section class="panel" id="maintenancePanel">
         <div class="panel-head">
           <div>
@@ -334,6 +345,7 @@
         </div>
       </section>
 
+      <!-- Status panel mirrors topic freshness for operators who need a quick live-stream check. -->
       <section class="panel" id="statusPanel">
         <div class="panel-head">
           <div>

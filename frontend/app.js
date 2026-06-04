@@ -1,3 +1,11 @@
+/**
+ * Main browser controller for the SMAN ABB GoFa dashboard.
+ *
+ * The dashboard normalizes live ROS/EGM payloads, derives operator-facing
+ * health and maintenance signals, and keeps 2D/3D views synchronized with real
+ * telemetry or the local demo stream. Shared state is centralized because most
+ * widgets depend on the same freshness, joint-position, and history-window data.
+ */
 import * as THREE from "/assets/vendor/three.module.min.js";
 import { STLLoader } from "/assets/vendor/three-addons/loaders/STLLoader.js";
 
@@ -203,6 +211,13 @@ const twin = createDigitalTwin(twinCanvasEl, {
   },
 });
 
+/**
+ * Update the connection pill without forcing unnecessary DOM churn.
+ *
+ * @param {boolean} isOnline Whether the dashboard stream is connected.
+ * @param {string} label Operator-facing connection label.
+ * @returns {void}
+ */
 function setConnection(isOnline, label) {
   statusEl.classList.toggle("online", isOnline);
   statusEl.classList.toggle("offline", !isOnline);
@@ -316,6 +331,8 @@ function resetDemoState() {
 }
 
 function enableDemoMode() {
+  // Manual demo mode deliberately overrides future WebSocket data so the UI can
+  // be used for screenshots, reviews, and training without a live ROS stack.
   state.forceDemo = true;
   resetDemoState();
   stopDemoStream();
@@ -324,6 +341,8 @@ function enableDemoMode() {
 
 function updateLiveRate(receivedAt) {
   state.jointUpdateTimes.push(receivedAt);
+  // Five seconds smooths packet jitter while still making stream degradation
+  // visible quickly to the operator.
   state.jointUpdateTimes = state.jointUpdateTimes.filter((time) => receivedAt - time <= 5);
 
   if (state.jointUpdateTimes.length < 2) {
@@ -370,6 +389,8 @@ function updateJointWidgets(data) {
 }
 
 function estimateTcpPose(positions) {
+  // This lightweight forward estimate is intentionally approximate; it keeps
+  // workspace and health widgets useful when no Cartesian pose topic is present.
   const [j1 = 0, j2 = 0, j3 = 0, j4 = 0, j5 = 0, j6 = 0] = positions || [];
   const shoulder = j2;
   const elbow = j2 + j3;
@@ -404,6 +425,8 @@ function applyTcpPose(pose, receivedAt, source = "estimated") {
     speed = distance < 0.0005 ? 0 : distance / dt;
   }
 
+  // Store the accepted pose once so health, workspace, and readouts all reason
+  // about the same TCP sample.
   state.previousTcpPose = { ...pose, receivedAt };
   state.currentTcpPose = pose;
   state.currentTcpSpeed = speed;
@@ -461,6 +484,8 @@ function average(values) {
 function comparableHeaderStamp(headerStamp, receivedAt) {
   if (!Number.isFinite(headerStamp) || !Number.isFinite(receivedAt)) return null;
   const deltaSeconds = receivedAt - headerStamp;
+  // Ignore ROS sim-time or unrelated clock domains; otherwise latency can look
+  // catastrophically high even though packets are arriving normally.
   if (headerStamp < 1_000_000_000 || Math.abs(deltaSeconds) > 60) return null;
   return Math.max(0, deltaSeconds * 1000);
 }
@@ -471,6 +496,8 @@ function updateDataQuality(data, receivedAt) {
   const latencyMs = comparableHeaderStamp(data.header_stamp, receivedAt);
   if (latencyMs !== null) {
     state.latencySamples.push(latencyMs);
+    // Keep recent quality samples bounded so a resolved network hiccup does not
+    // dominate the status widgets for the rest of the session.
     state.latencySamples = state.latencySamples.slice(-80);
 
     if (state.latencySamples.length > 1) {
@@ -509,6 +536,8 @@ function updateHealth(data, quality, tcp) {
   if (nearLimit) issues.push({ level: "warn", label: "Achse nahe Limit", value: "> 86 %" });
   if (tcp.speed > 0.65) issues.push({ level: "warn", label: "TCP schnell", value: `${tcp.speed.toFixed(2)} m/s` });
 
+  // The score is a triage signal, not a certified safety value; the issue list
+  // stays visible so operators can see exactly which heuristic moved it.
   state.healthIssues = issues;
   const scorePenalty = issues.reduce((sum, issue) => sum + (issue.level === "danger" ? 45 : 14), 0);
   state.healthScore = Math.max(0, Math.min(100, Math.round(100 - scorePenalty)));
@@ -570,6 +599,12 @@ function labelEnum(value, labels) {
   return labels[number] || `unknown:${number}`;
 }
 
+/**
+ * Normalize ABB EGM state from any supported bridge format.
+ *
+ * @param {object} data Raw EGM payload.
+ * @returns {object|null} Compact state fields for dashboard widgets.
+ */
 function normalizeEgmState(data) {
   if (!data) return null;
   if (typeof data.data === "string") {
@@ -583,6 +618,8 @@ function normalizeEgmState(data) {
   if (Array.isArray(data.channels) && data.channels.length === 0) return null;
   if (Array.isArray(data.egm_channels) && data.egm_channels.length === 0) return null;
 
+  // Accept both ROS message fields and decoded UDP fields so the rest of the UI
+  // can render EGM state independent of the bridge that supplied it.
   const channel = data.egm_channels?.[0] || data.channels?.[0] || data;
   if (!channel || typeof channel !== "object") return null;
   const utilization = Number(channel.utilization_rate);
@@ -610,6 +647,12 @@ function normalizeEgmState(data) {
   return Object.values(result).some((value) => value !== null && value !== undefined) ? result : null;
 }
 
+/**
+ * Render persisted maintenance, event, and notification state.
+ *
+ * @param {object} summary Backend summary response.
+ * @returns {void}
+ */
 function renderMaintenanceSummary(summary) {
   if (!summary) return;
   maintenanceHealthScoreEl.textContent = String(summary.health_score ?? 100);
@@ -621,6 +664,8 @@ function renderMaintenanceSummary(summary) {
     ? `${summary.utilization_max.toFixed(1)} %`
     : utilizationValueEl.textContent || "-";
   if (state.graphWindow === "live") {
+    // In live mode the periodic summary acts as another sample; historical
+    // graph windows replace complete series through refreshGraphHistory().
     charts.maintenanceHealth.push(summary.health_score ?? 100);
     charts.axisWear.setValues((summary.axis || []).map((axis) => axis.wear_score || 0), { max: 100 });
   }
@@ -704,6 +749,8 @@ function syncEventToasts(events, shouldNotify) {
   if (!shouldNotify || !eventToastStackEl) return;
   const orderedEvents = [...events].sort((left, right) => (left.created_at || 0) - (right.created_at || 0));
   if (!state.eventToastsInitialized) {
+    // First load can include old events, so seed the seen set before notifying
+    // operators about only genuinely new events.
     for (const event of orderedEvents) {
       if (event.id !== undefined && event.id !== null) state.seenEventIds.add(String(event.id));
     }
@@ -790,6 +837,11 @@ async function refreshMaintenanceSummary() {
   }
 }
 
+/**
+ * Refresh live or historical chart data for the selected graph window.
+ *
+ * @returns {Promise<void>}
+ */
 async function refreshGraphHistory() {
   if (state.graphWindow === "live") {
     charts.jointActivity.push(state.currentJointVelocities);
@@ -803,6 +855,8 @@ async function refreshGraphHistory() {
     if (!response.ok) return;
     const history = await response.json();
     const points = history.points || [];
+    // History responses are sparse when an axis has no data, so normalize to
+    // six slots to keep chart geometry stable.
     const axisPositions = Array.from({ length: 6 }, (_, index) => {
       const row = (history.axis_positions || []).find((item) => item.axis === index + 1);
       return row?.position_rad ?? 0;
@@ -939,6 +993,8 @@ function updateShowcaseStatus(data, receivedAt) {
 
   const moving = velocityPeak > 0.015 || positionDelta > 0.006;
 
+  // Use both velocity and position delta because some telemetry sources publish
+  // one more reliably than the other.
   readyStateEl.textContent = hasFreshJointState && hasPositions ? "Ready" : "Waiting";
   setCardState(readyCardEl, hasFreshJointState && hasPositions ? "ok" : "warn");
 
@@ -1053,11 +1109,19 @@ function hideJointPopover() {
   document.querySelectorAll(".joint-row.active").forEach((row) => row.classList.remove("active"));
 }
 
+/**
+ * Merge topic freshness updates into the visible topic lists.
+ *
+ * @param {Array<object>} statusTopics Topic status rows from the backend.
+ * @returns {void}
+ */
 function updateTopics(statusTopics = []) {
   for (const topic of statusTopics) {
     state.topics.set(topic.name, topic);
   }
 
+  // Merge configured and observed names so the dashboard shows expected topics
+  // that have not produced data yet alongside dynamically discovered topics.
   const allNames = new Set([
     ...state.configuredTopics.map((topic) => topic.name),
     ...state.topics.keys(),
@@ -1124,12 +1188,21 @@ function updateTopics(statusTopics = []) {
 }
 
 function shouldUseJointTopic(topic) {
+  // Feedback beats planned state for the twin; planned trajectories can be
+  // ahead of the physical robot and should not drive the operator view.
   if (topic === "/egm/planned_joint_states") return false;
   if (!state.activeJointTopic) return topic === "/egm/feedback_joint_states" || topic === "/joint_states";
   if (state.activeJointTopic === "/joint_states" && topic === "/egm/feedback_joint_states") return true;
   return topic === state.activeJointTopic;
 }
 
+/**
+ * Render joint-state telemetry and propagate it to charts, health, and the twin.
+ *
+ * @param {object} data Normalized JointState payload data.
+ * @param {string} topic Source topic name.
+ * @returns {void}
+ */
 function updateJointStates(data, topic = "/joint_states") {
   if (!shouldUseJointTopic(topic)) return;
   state.activeJointTopic = topic;
@@ -1147,6 +1220,8 @@ function updateJointStates(data, topic = "/joint_states") {
 
   state.jointDetails = data.names.map((name, index) => {
     const position = data.positions?.[index] ?? 0;
+    // The bar is a quick relative cue around +/- pi; exact values remain visible
+    // in the numeric readout and popover.
     const normalized = Math.max(0, Math.min(100, ((position + Math.PI) / (Math.PI * 2)) * 100));
     return {
       index,
@@ -1233,6 +1308,8 @@ function updateJointStates(data, topic = "/joint_states") {
   updateJointWidgets(data);
   updateShowcaseStatus(data, receivedAt);
   const hasFreshEgmTcp = state.lastTcpPoseReceivedAt !== null && receivedAt - state.lastTcpPoseReceivedAt < 1.0;
+  // Fresh Cartesian EGM pose wins over the rough joint-based estimate because it
+  // reflects the controller's measured TCP state.
   const tcp = hasFreshEgmTcp ? currentTcpForHealth(data) : updateTcpPose(data, receivedAt);
   if (!hasFreshEgmTcp) {
     twinPoseLabelEl.textContent = "ROS2";
@@ -1255,6 +1332,8 @@ function previewPayload(payload) {
     }
   }
   if (payload.type === "sensor_msgs/msg/JointState") {
+    // JointState payloads can be large; trim the preview to the fields most
+    // useful when debugging live motion.
     return {
       kind: payload.kind,
       topic: payload.topic,
@@ -1297,6 +1376,8 @@ function shouldPreviewMessage(payload) {
 
   const now = performance.now();
   const minIntervalMs = filter === "all" ? 1200 : 700;
+  // Throttle preview writes so fast ROS topics do not make the developer panel
+  // unreadable while charts continue to update at full speed.
   if (now - state.lastMessagePreviewAt < minIntervalMs) return false;
   state.lastMessagePreviewAt = now;
   return true;
@@ -1310,8 +1391,16 @@ function updateMessagePreview(payload) {
   }
 }
 
+/**
+ * Dispatch one backend WebSocket message into the appropriate dashboard update.
+ *
+ * @param {object} payload Message from the dashboard WebSocket or demo stream.
+ * @returns {void}
+ */
 function handleMessage(payload) {
   if (!payload.demo && payload.kind === "topic") {
+    // Any real topic packet leaves passive demo mode; forced demo mode still
+    // ignores live traffic for stable presentations.
     setLiveMode("ROS live");
   }
 
@@ -1428,6 +1517,8 @@ function demoStatusPayload(now) {
 function startDemoStream(force = false) {
   if (state.demoTimer || (state.realDataReceived && !force)) return;
 
+  // The demo stream uses the same message dispatcher as real WebSocket data so
+  // every widget exercises the production rendering path.
   state.demoStartedAt = Date.now() / 1000;
   state.configuredTopics = [
     { name: "/joint_states", type: "sensor_msgs/msg/JointState", label: "Joint States" },
@@ -1497,6 +1588,8 @@ function startDemoStream(force = false) {
 }
 
 function connect() {
+  // Reconnects stay simple because the server sends a snapshot immediately on
+  // connection, rebuilding client state after any network gap.
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
   state.socket = socket;
@@ -1631,6 +1724,8 @@ function prepareCanvas(canvas) {
     canvas.height = Math.floor(height * dpr);
   }
   const ctx = canvas.getContext("2d");
+  // Draw in CSS pixels after allocating a high-DPI backing store; this keeps
+  // chart math readable and text crisp.
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, width, height };
 }
@@ -1668,6 +1763,14 @@ function niceTick(value) {
   return value.toFixed(2);
 }
 
+/**
+ * Build a multi-axis live/history line chart.
+ *
+ * @param {HTMLCanvasElement} canvas Target canvas.
+ * @param {HTMLElement} legendEl Interactive axis legend container.
+ * @param {object} options Chart colors, labels, and sample limits.
+ * @returns {object} Chart API with push, setSeries, and draw methods.
+ */
 function createAxisActivityChart(canvas, legendEl, options = {}) {
   const labels = options.labels || [];
   const colors = options.colors || [];
@@ -1688,6 +1791,8 @@ function createAxisActivityChart(canvas, legendEl, options = {}) {
       button.innerHTML = `<span class="axis-color-dot" aria-hidden="true"></span><span>${label}</span>`;
       button.addEventListener("click", () => {
         const visibleCount = active.filter(Boolean).length;
+        // First click isolates one axis; later clicks toggle axes while keeping
+        // at least one visible series so the chart never renders empty.
         if (visibleCount === active.length) {
           active.fill(false);
           active[index] = true;
@@ -1770,6 +1875,13 @@ function createAxisActivityChart(canvas, legendEl, options = {}) {
   };
 }
 
+/**
+ * Build a single-series compact chart for rate, packet flow, or health.
+ *
+ * @param {HTMLCanvasElement} canvas Target canvas.
+ * @param {object} options Chart colors, labels, and fixed scale options.
+ * @returns {object} Chart API with push, setSeries, and draw methods.
+ */
 function createSparkline(canvas, options = {}) {
   const values = [];
   const maxSamples = options.maxSamples || 60;
@@ -1838,6 +1950,13 @@ function createSparkline(canvas, options = {}) {
   };
 }
 
+/**
+ * Build a compact bar chart for joint positions, freshness, or wear.
+ *
+ * @param {HTMLCanvasElement} canvas Target canvas.
+ * @param {object} options Chart colors and labels.
+ * @returns {object} Chart API with setValues and draw methods.
+ */
 function createBarChart(canvas, options = {}) {
   let values = [];
   let config = {};
@@ -1895,6 +2014,12 @@ function createBarChart(canvas, options = {}) {
   };
 }
 
+/**
+ * Build the interactive TCP workspace map.
+ *
+ * @param {HTMLCanvasElement} canvas Target WebGL canvas.
+ * @returns {object} Map API with setPose and draw methods.
+ */
 function createWorkspaceMap(canvas) {
   if (!canvas) return { setPose() {}, draw() {} };
 
@@ -1973,6 +2098,8 @@ function createWorkspaceMap(canvas) {
   scene.add(headingLine);
 
   function poseToVector(nextPose) {
+    // Convert ROS x/y/z into the dashboard's x/up/z scene coordinates so the
+    // map matches the visual orientation of the digital twin.
     return new THREE.Vector3(nextPose.x, Math.max(0.02, nextPose.z), -nextPose.y);
   }
 
@@ -2064,6 +2191,13 @@ function createWorkspaceMap(canvas) {
   };
 }
 
+/**
+ * Build the interactive GoFa digital twin.
+ *
+ * @param {HTMLCanvasElement} canvas Target WebGL canvas.
+ * @param {object} options Optional callbacks for model loading state.
+ * @returns {object} Twin API with setJoints method.
+ */
 function createDigitalTwin(canvas, options = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -2194,6 +2328,8 @@ function createDigitalTwin(canvas, options = {}) {
   });
 
   function rosVector(x, y, z) {
+    // ROS uses z-up with y lateral; the Three.js scene uses y-up, so every mesh
+    // and joint pivot passes through the same coordinate conversion.
     return new THREE.Vector3(x, z, -y);
   }
 
@@ -2225,6 +2361,8 @@ function createDigitalTwin(canvas, options = {}) {
   }
 
   async function loadGoFaMeshes() {
+    // Load the real STL visual meshes when available; the procedural arm above
+    // stays as a deterministic fallback for offline or packaging issues.
     const loader = new STLLoader();
     const assetBase = "/assets/robot/abb_crb15000_support/meshes/crb15000_5_95/visual";
     const meshRoot = new THREE.Group();

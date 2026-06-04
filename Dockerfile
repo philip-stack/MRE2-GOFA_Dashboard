@@ -6,6 +6,8 @@ WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# The dashboard subscribes to ROS2 topics and can build the local GoFa support
+# workspace, so the image includes both runtime message packages and build tools.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
   build-essential \
@@ -63,6 +65,8 @@ COPY ros2_ws/src /app/ros2_ws/src
 COPY ABB /app/ros2_ws/src/ABB
 COPY docker/entrypoint.sh /entrypoint.sh
 
+# Building at image time makes the FastAPI app able to import ABB/ROS message
+# packages immediately when dynamic topic discovery finds them.
 RUN source /opt/ros/jazzy/setup.bash \
   && cd /app/ros2_ws \
   && colcon build --symlink-install \
@@ -75,5 +79,7 @@ ENV RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 EXPOSE 8080
 EXPOSE 6511/udp
 
+# The entrypoint sources ROS overlays before launching uvicorn or any alternate
+# command passed by docker compose.
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8080"]

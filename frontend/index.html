@@ -8,6 +8,7 @@
   </head>
   <body>
     <main class="shell">
+      <!-- Primary navigation: all dashboard views share the same live connection and demo controls. -->
       <section class="topbar">
         <div>
           <h1>ABB GoFa Live Showcase</h1>
@@ -40,6 +41,7 @@
         </div>
       </section>
 
+      <!-- Always-visible KPIs summarize readiness before the user chooses a detailed view. -->
       <section class="metrics showcase-metrics" id="metricStrip">
         <article class="metric status-card" id="readyCard">
           <span>Betriebszustand</span>
@@ -67,6 +69,7 @@
         </article>
       </section>
 
+      <!-- Graph window selector drives both live chart updates and historical API queries. -->
       <section class="chart-toolbar" aria-label="Graph Zeitfilter">
         <div>
           <p class="eyebrow">Graphen</p>
@@ -81,6 +84,7 @@
         </div>
       </section>
 
+      <!-- Operator view: concise health, motion, TCP, and twin information for day-to-day monitoring. -->
       <section class="dashboard-view active" id="userDashboard" data-dashboard-view="user" aria-labelledby="userViewTab">
         <section class="widget-grid user-widget-grid">
           <article class="panel widget-card">
@@ -233,6 +237,7 @@
         </section>
       </section>
 
+      <!-- Maintenance view: persisted aggregates, event acknowledgement, and mail configuration. -->
       <section class="dashboard-view" id="maintenanceDashboard" data-dashboard-view="maintenance" aria-labelledby="maintenanceViewTab" hidden>
         <section class="maintenance-toolbar">
           <div>
@@ -320,6 +325,7 @@
         </section>
       </section>
 
+      <!-- Developer view: raw stream diagnostics and topic-level detail for troubleshooting bridges. -->
       <section class="dashboard-view" id="developerDashboard" data-dashboard-view="developer" aria-labelledby="developerViewTab" hidden>
         <section class="widget-grid developer-widget-grid">
           <article class="panel widget-card">
@@ -431,6 +437,7 @@
         </article>
       </section>
     </main>
+    <!-- Secondary dialogs live outside the main layout so they can preserve focus and overlay all views. -->
     <div class="modal-backdrop" id="mailRecipientsModal" role="dialog" aria-modal="true" aria-labelledby="mailRecipientsTitle" hidden>
       <section class="modal-panel">
         <div class="modal-head">

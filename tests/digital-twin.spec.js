@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+/**
+ * Collect canvas and label state from the browser so rendering regressions are
+ * caught even when the surrounding dashboard DOM still loads correctly.
+ */
 async function canvasStats(page) {
   return page.evaluate(() => {
     const canvas = document.querySelector("#twinCanvas");
@@ -18,6 +22,10 @@ for (const viewport of [
   { name: "desktop", width: 1280, height: 900 },
   { name: "mobile", width: 390, height: 844 },
 ]) {
+  /**
+   * Verifies desktop and mobile framing because the WebGL canvas is resized from
+   * CSS dimensions and can otherwise appear blank or undersized on one viewport.
+   */
   test(`digital twin renders on ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("http://127.0.0.1:8080", { waitUntil: "domcontentloaded" });

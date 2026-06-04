@@ -1,3 +1,12 @@
+/**
+ * Browser-side controller for the authenticated robot HMI.
+ *
+ * The script keeps operator input, live telemetry, and REST motion commands in a
+ * single state object so every stop condition can clear the same active command.
+ * It intentionally sends short heartbeat commands instead of long-running moves:
+ * losing the browser, pointer, auth session, or network path should naturally
+ * decay into a stop rather than leaving stale intent active.
+ */
 const connectionPill = document.getElementById("connectionPill");
 const readyValue = document.getElementById("readyValue");
 const motionValue = document.getElementById("motionValue");
@@ -71,6 +80,13 @@ const state = {
   homeConfirmResolve: null,
 };
 
+/**
+ * Format a numeric value for compact HMI readouts.
+ *
+ * @param {number} value Raw value to show.
+ * @param {number} digits Fraction digits for finite values.
+ * @returns {string} Formatted value or a placeholder for invalid data.
+ */
 function formatNumber(value, digits = 2) {
   return Number.isFinite(value) ? value.toFixed(digits) : "-";
 }
@@ -108,6 +124,12 @@ function setSpeed(value) {
   });
 }
 
+/**
+ * Switch between joint-axis jogging and TCP jogging.
+ *
+ * @param {string} mode Requested jog mode.
+ * @returns {void}
+ */
 function setJogMode(mode) {
   state.jogMode = mode === "tcp" ? "tcp" : "axis";
   axisBank.hidden = state.jogMode !== "axis";
@@ -182,6 +204,8 @@ function renderJoints() {
 
 function updateRate(receivedAt) {
   state.jointTimes.push(receivedAt);
+  // A short sliding window responds quickly to stale robot data while smoothing
+  // single packet timing jitter from the WebSocket stream.
   state.jointTimes = state.jointTimes.filter((time) => receivedAt - time <= 5);
   if (state.jointTimes.length < 2) {
     rateValue.textContent = "0.0 Hz";
@@ -203,6 +227,8 @@ function handlePayload(payload) {
     const topics = payload.topics || [];
     const jointTopic = topics.find((topic) => topic.name === "/joint_states" || topic.name === "/egm/feedback_joint_states");
     const age = Number(jointTopic?.age_sec);
+    // The HMI treats topic freshness as a motion-readiness signal; a connected
+    // WebSocket alone is not enough to declare the robot ready.
     setRobotFresh(Number.isFinite(age) && age <= ROBOT_STALE_AFTER_SEC, age);
 
     topicList.innerHTML = "";
@@ -224,6 +250,8 @@ function handlePayload(payload) {
     if (Array.isArray(velocities) && velocities.length >= 6) {
       state.jointVelocities = velocities.slice(0, 6).map((value) => Number(value) || 0);
     } else if (state.previousJointPositions && Array.isArray(nextPositions)) {
+      // Some telemetry sources omit velocities, so derive them locally for the
+      // operator speed gauges without requiring a backend schema change.
       const dt = Math.max(0.001, payload.received_at - state.previousJointAt);
       state.jointVelocities = nextPositions.slice(0, 6).map((value, index) => {
         const previous = state.previousJointPositions[index];
@@ -248,6 +276,8 @@ function handlePayload(payload) {
 }
 
 function connectSocket() {
+  // Match the page protocol so deployments behind HTTPS reverse proxies keep
+  // browser mixed-content protections happy.
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   state.socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
 
@@ -269,11 +299,20 @@ function connectSocket() {
     state.socketOnline = false;
     setRobotFresh(false);
     window.clearTimeout(state.reconnectTimer);
+    // Reconnect only while the HMI session is active; the login screen should
+    // not keep a motion-capable live channel open in the background.
     if (!state.authenticated) return;
     state.reconnectTimer = window.setTimeout(connectSocket, 1200);
   });
 }
 
+/**
+ * Send an authenticated JSON command to the HMI API.
+ *
+ * @param {string} url API endpoint.
+ * @param {object} payload JSON body.
+ * @returns {Promise<object>} Parsed response body.
+ */
 async function postJson(url, payload = {}) {
   const response = await fetch(url, {
     method: "POST",
@@ -318,6 +357,8 @@ function fitHmiToViewport() {
   if (!state.authenticated || !hmiShell) return;
   document.documentElement.style.setProperty("--hmi-scale", "1");
   if (window.matchMedia("(max-width: 760px)").matches) return;
+  // The HMI is an instrument panel, so desktop layouts scale as one unit to
+  // avoid vertical scrolling hiding controls during operation.
   const naturalHeight = hmiShell.scrollHeight;
   const naturalWidth = hmiShell.scrollWidth;
   const scale = Math.min(
@@ -353,6 +394,8 @@ async function checkAuth() {
     return true;
   }
   if (data.authenticated) {
+    // Require a tab-local session marker in addition to the cookie so reopening
+    // the HMI starts from an explicit login screen.
     await fetch("/api/hmi/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
   }
   showLogin();
@@ -377,6 +420,12 @@ async function logout() {
   showLogin("Abgemeldet");
 }
 
+/**
+ * Send the currently active jog command to the backend.
+ *
+ * @param {string} endpoint Start or heartbeat endpoint for the active mode.
+ * @returns {Promise<void>}
+ */
 async function sendJog(endpoint = "/api/hmi/jog/start") {
   if (!state.activeJog) return;
   const isTcpJog = state.activeJog.mode === "tcp";
@@ -415,6 +464,12 @@ function clearJogButtons() {
   mobileJoystick?.classList.remove("active");
 }
 
+/**
+ * Clear local jog state first, then ask the backend to cancel motion.
+ *
+ * @param {string} reason Diagnostic reason sent to the backend.
+ * @returns {Promise<void>}
+ */
 async function stopJog(reason = "operator") {
   state.activeJog = null;
   state.activePointerId = null;
@@ -450,6 +505,8 @@ function startJogCommand(command, pointerId = null, activeElement = null) {
   const heartbeatEndpoint = isTcpJog ? "/api/hmi/tcp/heartbeat" : "/api/hmi/jog/heartbeat";
   sendJog(startEndpoint).catch(handleJogError);
   window.clearInterval(state.jogTimer);
+  // Heartbeats renew short backend commands; if the browser stops firing them,
+  // the backend command duration expires instead of continuing indefinitely.
   state.jogTimer = window.setInterval(() => {
     sendJog(heartbeatEndpoint).catch(handleJogError);
   }, 320);
@@ -486,6 +543,8 @@ function commandFromJoystick(dx, dy) {
   const target = mobileJoystickTarget?.value || "axis:0";
   const [mode, value] = target.split(":");
   const magnitude = Math.hypot(dx, dy);
+  // The deadzone prevents hand tremor near the center from alternating between
+  // small motion commands and stops.
   if (magnitude < MOBILE_JOYSTICK_DEADZONE) return null;
 
   if (mode === "axis") {
@@ -532,6 +591,8 @@ function updateMobileJoystick(event) {
   const rawY = (event.clientY - centerY) / radius;
   const magnitude = Math.hypot(rawX, rawY);
   const limit = magnitude > 1 ? 1 / magnitude : 1;
+  // Clamp the virtual stick to the circular gate so visual feedback and command
+  // selection use the same normalized coordinate space.
   const dx = rawX * limit;
   const dy = rawY * limit;
   mobileJoystickKnob.style.transform = `translate(calc(-50% + ${dx * 56}px), calc(-50% + ${dy * 56}px))`;
@@ -550,6 +611,11 @@ function updateMobileJoystick(event) {
   startJogCommand(command, event.pointerId, mobileJoystick);
 }
 
+/**
+ * Bind all operator controls once after the static UI has been rendered.
+ *
+ * @returns {void}
+ */
 function installControls() {
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -603,6 +669,8 @@ function installControls() {
   });
 
   window.addEventListener("pointerup", (event) => {
+    // Pointer release anywhere in the window is treated as a stop condition so
+    // dragging outside a button cannot leave a jog command active.
     if (state.joystickPointerId === event.pointerId) {
       state.joystickPointerId = null;
       stopJog("joystick-release");
@@ -620,6 +688,8 @@ function installControls() {
   });
   window.addEventListener("blur", () => {
     state.joystickPointerId = null;
+    // Losing focus is operationally equivalent to losing the operator's hand on
+    // the controls.
     if (state.activeJog) stopJog("window-blur");
   });
 
@@ -691,6 +761,11 @@ function installControls() {
   });
 }
 
+/**
+ * Load lightweight health indicators for the HMI side panel.
+ *
+ * @returns {Promise<void>}
+ */
 async function loadMaintenanceSummary() {
   try {
     const response = await fetch("/api/history/summary?window=24h");
@@ -703,6 +778,11 @@ async function loadMaintenanceSummary() {
   }
 }
 
+/**
+ * Restore the operator-selected transparent/solid panel mode.
+ *
+ * @returns {void}
+ */
 function initTheme() {
   const params = new URLSearchParams(window.location.search);
   const transparent = params.get("theme") === "transparent" || window.localStorage.getItem("sman-hmi-transparent") === "1";

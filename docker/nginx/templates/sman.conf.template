@@ -2,6 +2,8 @@ server {
     listen ${SMAN_HTTPS_PORT} ssl;
     server_name ${SMAN_SERVER_NAME};
 
+    # Local HMI deployments terminate TLS here so the FastAPI app can enforce
+    # HTTPS-only motion endpoints without owning certificate files.
     ssl_certificate /etc/nginx/certs/${SMAN_TLS_CERT_FILE};
     ssl_certificate_key /etc/nginx/certs/${SMAN_TLS_KEY_FILE};
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -16,6 +18,8 @@ server {
     error_page 497 =307 https://${DOLLAR}http_host${DOLLAR}request_uri;
 
     location / {
+        # Dashboard pages, HMI API calls, and WebSocket telemetry share one
+        # upstream, so the proxy must preserve Upgrade headers and long reads.
         proxy_pass http://${SMAN_UPSTREAM_HOST}:${SMAN_UPSTREAM_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host ${DOLLAR}host;

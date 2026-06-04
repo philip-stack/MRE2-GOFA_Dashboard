@@ -1,3 +1,13 @@
+/*
+ * Main dashboard stylesheet.
+ *
+ * Sections are grouped by dashboard responsibility: shared design tokens,
+ * navigation/status, analytics panels, digital twin, telemetry tables,
+ * maintenance/notification workflows, and responsive layout. Comments describe
+ * why groups exist so future UI changes land in the right area.
+ */
+
+/* Shared tokens keep live, developer, and maintenance views visually consistent. */
 :root {
   color-scheme: dark;
   --bg: #0f1115;
@@ -30,6 +40,7 @@ body {
   color: var(--text);
 }
 
+/* Header and view switching stay compact because the dashboard starts with data, not a landing page. */
 .project-credit {
   width: min(1180px, calc(100vw - 32px));
   margin: -24px auto 18px;
@@ -201,6 +212,7 @@ h2 {
   background: var(--danger);
 }
 
+/* Top-level KPIs use fixed grid tracks so changing telemetry text does not shift the dashboard. */
 .metrics {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -290,6 +302,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   display: none;
 }
 
+/* Dashboard view grids share spacing but keep separate column rules for user, developer, and maintenance density. */
 .widget-grid {
   display: grid;
   gap: 14px;
@@ -370,6 +383,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   justify-content: flex-end;
 }
 
+/* Canvas cards reserve stable heights so live chart redraws never resize surrounding panels. */
 .widget-card {
   min-height: 220px;
 }
@@ -447,6 +461,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   box-shadow: 0 0 0 3px rgba(98, 107, 120, 0.16);
 }
 
+/* TCP pose, data quality, and health widgets use the same tile grammar for fast scanning. */
 .pose-card {
   min-height: 220px;
 }
@@ -636,6 +651,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   grid-column: 1 / -1;
 }
 
+/* The twin is intentionally large: the 3D state is the primary inspection surface. */
 .twin-panel {
   min-height: 620px;
 }
@@ -727,6 +743,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   outline: none;
 }
 
+/* Telemetry rows prioritize scanability and expose deeper values through popovers. */
 .joint-list,
 .topic-list {
   padding: 16px;
@@ -833,6 +850,7 @@ pre {
   white-space: pre-wrap;
 }
 
+/* Maintenance and notification controls are grouped so operational history can be managed without leaving the dashboard. */
 .maintenance-toolbar {
   display: flex;
   align-items: center;
@@ -935,6 +953,7 @@ pre {
   background: linear-gradient(90deg, var(--accent), var(--warn), var(--danger));
 }
 
+/* Event and mail rows use left severity rails because they remain readable in dense lists. */
 .timeline {
   max-height: 440px;
   overflow: auto;
@@ -1057,6 +1076,7 @@ pre {
   text-align: right;
 }
 
+/* Recipient management is modal because it is secondary to telemetry but still must preserve focus. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1102,6 +1122,7 @@ pre {
   padding: 16px;
 }
 
+/* Toasts notify only about newly observed events; fixed placement avoids reshaping dashboard panels. */
 .event-toast-stack {
   position: fixed;
   right: 18px;
@@ -1169,6 +1190,7 @@ pre {
   line-height: 1;
 }
 
+/* The raw message preview is throttled by JS, but CSS still protects it from overflowing the developer view. */
 .preview-controls {
   display: flex;
   align-items: center;
@@ -1218,6 +1240,7 @@ pre {
   color: var(--muted);
 }
 
+/* Joint popovers reveal detail on demand so the main joint table stays compact. */
 .joint-popover {
   position: fixed;
   z-index: 20;
@@ -1303,6 +1326,7 @@ pre {
   font-variant-numeric: tabular-nums;
 }
 
+/* Mobile layout collapses dense desktop grids into a single operational column. */
 @media (max-width: 760px) {
   .shell {
     width: min(100vw - 20px, 1180px);

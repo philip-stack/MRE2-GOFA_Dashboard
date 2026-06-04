@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+/**
+ * Covers the no-ROS demo path because it is the fastest end-to-end check that
+ * the dashboard can render all three primary views from the shared message flow.
+ */
 test("dashboard tabs switch and demo data fills widgets", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("http://127.0.0.1:8080", { waitUntil: "domcontentloaded" });

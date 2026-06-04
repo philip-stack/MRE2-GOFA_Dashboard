@@ -1,4 +1,6 @@
 services:
+  # PostgreSQL stores dashboard history, events, notification settings, and mail
+  # queue state so the UI keeps context across container restarts.
   sman-dashboard-db:
     image: postgres:16-alpine
     container_name: sman-dashboard-db
@@ -17,6 +19,8 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Host networking lets the dashboard see the same ROS2/DDS and ABB EGM UDP
+  # traffic as the robot host without additional bridge containers.
   sman-gofa-dashboard:
     build: .
     container_name: sman-gofa-dashboard
@@ -60,6 +64,8 @@ services:
       SMAN_EXTRA_HOST_IP: "${SMAN_EXTRA_HOST_IP:-}"
       ROS_DISCOVER_TOPICS: "${ROS_DISCOVER_TOPICS:-1}"
       ROS_DISCOVER_DENYLIST: "${ROS_DISCOVER_DENYLIST:-/parameter_events,/rosout}"
+      # Seed topics guarantee useful dashboard widgets before optional discovery
+      # has found additional ROS streams.
       ROS_TOPICS: >
         [
           {"name": "/joint_states", "type": "sensor_msgs/msg/JointState", "label": "Joint States"},
@@ -70,6 +76,8 @@ services:
       - ./data:/app/data
     restart: unless-stopped
 
+  # Optional HTTPS proxy for the HMI. It preserves WebSocket upgrades and marks
+  # requests as HTTPS so secure HMI cookies work behind nginx.
   sman-hmi-nginx:
     image: nginx:1.27-alpine
     container_name: sman-hmi-nginx

@@ -1,4 +1,7 @@
 services:
+  # Windows Docker Desktop does not expose Linux-style host networking, so this
+  # override publishes the dashboard ports explicitly and reaches host services
+  # through host.docker.internal.
   sman-gofa-dashboard:
     network_mode: bridge
     ports:
@@ -14,6 +17,8 @@ services:
       - --port
       - "${SMAN_HTTP_PORT:-8080}"
 
+  # The HTTPS HMI proxy stays in bridge mode as well and forwards back to the
+  # dashboard port published on the Windows host.
   sman-hmi-nginx:
     network_mode: bridge
     ports:
