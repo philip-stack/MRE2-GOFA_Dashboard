@@ -22,7 +22,11 @@ services:
   # Host networking lets the dashboard see the same ROS2/DDS and ABB EGM UDP
   # traffic as the robot host without additional bridge containers.
   sman-gofa-dashboard:
-    build: .
+    build:
+      context: .
+      # The Dockerfile keeps the ROS workspace in its own cached stage; this
+      # final target changes only when runtime app files change.
+      target: dashboard
     container_name: sman-gofa-dashboard
     network_mode: host
     ipc: host

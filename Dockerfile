@@ -1,4 +1,4 @@
-FROM ros:jazzy-ros-base
+FROM ros:jazzy-ros-base AS ros-runtime-base
 
 SHELL ["/bin/bash", "-c"]
 
@@ -55,22 +55,33 @@ RUN apt-get update \
   ros-jazzy-xacro \
   && rm -rf /var/lib/apt/lists/*
 
+FROM ros-runtime-base AS python-deps
+
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip3 install --no-cache-dir --break-system-packages -r /app/backend/requirements.txt
 
+FROM python-deps AS ros-workspace
+
+COPY ros2_ws/src /app/ros2_ws/src
+COPY ABB /app/ros2_ws/src/ABB
+
+# The ROS workspace is isolated from dashboard source files so frontend/backend
+# feature changes reuse this expensive colcon layer.
+RUN source /opt/ros/jazzy/setup.bash \
+  && cd /app/ros2_ws \
+  && colcon build
+
+FROM python-deps AS dashboard
+
+# Only the built overlay is needed at runtime; keeping source/build artifacts out
+# of the final stage makes app-only rebuilds smaller and faster.
+COPY --from=ros-workspace /app/ros2_ws/install /app/ros2_ws/install
 COPY backend /app/backend
 COPY frontend /app/frontend
 COPY tools /app/tools
-COPY ros2_ws/src /app/ros2_ws/src
-COPY ABB /app/ros2_ws/src/ABB
 COPY docker/entrypoint.sh /entrypoint.sh
 
-# Building at image time makes the FastAPI app able to import ABB/ROS message
-# packages immediately when dynamic topic discovery finds them.
-RUN source /opt/ros/jazzy/setup.bash \
-  && cd /app/ros2_ws \
-  && colcon build --symlink-install \
-  && chmod +x /entrypoint.sh /app/tools/ros_joint_state_dashboard_bridge.py
+RUN chmod +x /entrypoint.sh /app/tools/ros_joint_state_dashboard_bridge.py
 
 ENV PYTHONUNBUFFERED=1
 ENV ROS_DOMAIN_ID=0

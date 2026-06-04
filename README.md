@@ -41,12 +41,21 @@ Optional verschlüsselt über den Nginx-Reverse-Proxy:
 https://localhost:8443/hmi
 ```
 
-Der Container enthält Backend, Frontend, ROS2-Workspace und Dashboard-Assets im Image. Nach Codeänderungen an `backend/`, `frontend/`, `tools/`, `ABB/` oder `ros2_ws/src/` immer neu bauen:
+Der Container enthält Backend, Frontend, ROS2-Workspace und Dashboard-Assets im Image. Der Dockerfile ist in Build-Stages aufgeteilt:
+
+- `ros-runtime-base`: ROS2- und Systempakete
+- `python-deps`: Python/FastAPI-Abhängigkeiten
+- `ros-workspace`: teurer `colcon build` für `ABB/` und `ros2_ws/src/`
+- `dashboard`: schlanke Runtime-Schicht mit `backend/`, `frontend/`, `tools/` und EntryPoint
+
+Dadurch bleibt der ROS-/colcon-Layer bei reinen Dashboard-, HMI- oder Graph-Änderungen gecacht. Änderungen an `backend/`, `frontend/` oder `tools/` bauen nur die finale App-Schicht neu:
 
 ```bash
 docker compose build sman-gofa-dashboard
 docker compose up -d --force-recreate sman-gofa-dashboard
 ```
+
+Der teure ROS-Workspace wird nur neu gebaut, wenn sich `ABB/`, `ros2_ws/src/`, `backend/requirements.txt` oder die ROS/Systempakete im `Dockerfile` ändern.
 
 Laufende Logs:
 
