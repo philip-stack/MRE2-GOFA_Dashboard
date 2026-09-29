@@ -57,6 +57,21 @@ const mobileJoystickStatus = document.getElementById("mobileJoystickStatus");
 const ROBOT_STALE_AFTER_SEC = 2.5;
 const CLIENT_SESSION_KEY = "sman-hmi-client-session";
 const MOBILE_JOYSTICK_DEADZONE = 0.28;
+// ?demo=1 replaces the live stream with simulated telemetry and answers motion
+// commands locally, so the HMI can be presented without a connected robot.
+const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
+const DEMO_RATE_HZ = 10;
+const DEMO_CYCLE_SEC = 8;
+// [center, amplitude, phase] per joint in rad for a slow pick-and-place-like loop.
+const DEMO_JOINT_WAVES = [
+  [0.0, 0.9, 0.0],
+  [0.25, 0.45, 1.1],
+  [0.45, 0.5, 2.0],
+  [0.0, 0.9, 0.6],
+  [0.8, 0.55, 2.6],
+  [0.0, 1.3, 1.6],
+];
+const DEMO_TOPICS = ["/joint_states", "/egm/state", "/egm/feedback_pose", "/tf", "/diagnostics"];
 
 const state = {
   socket: null,
@@ -78,6 +93,8 @@ const state = {
   egm: null,
   authenticated: false,
   homeConfirmResolve: null,
+  demoTimer: null,
+  demoOffsets: Array(6).fill(0),
 };
 
 /**
@@ -99,7 +116,7 @@ function setConnection(online, label) {
 
 function setRobotFresh(isFresh, ageSec = null) {
   if (isFresh) {
-    setConnection(true, "Roboter online");
+    setConnection(true, DEMO_MODE ? "Demo Daten" : "Roboter online");
     readyValue.textContent = "bereit";
     return;
   }
@@ -275,7 +292,76 @@ function handlePayload(payload) {
   }
 }
 
+/**
+ * Feed simulated telemetry through the regular payload handler.
+ *
+ * Demo jogs nudge the simulated pose so button presses give visible feedback
+ * without any command leaving the browser.
+ *
+ * @returns {void}
+ */
+function startDemoStream() {
+  window.clearInterval(state.demoTimer);
+  state.socketOnline = true;
+  commandState.textContent = "Demo-Modus aktiv";
+  const startedAt = performance.now() / 1000;
+  let tick = 0;
+  state.demoTimer = window.setInterval(() => {
+    const receivedAt = Date.now() / 1000;
+    const t = performance.now() / 1000 - startedAt;
+    if (state.activeJog?.mode === "axis") {
+      const step = ((currentSpeed() / 100) * 1.58) / DEMO_RATE_HZ;
+      state.demoOffsets[state.activeJog.axis] += state.activeJog.direction * step;
+    }
+    const positions = DEMO_JOINT_WAVES.map(([center, amplitude, phase], index) => {
+      const angle = (2 * Math.PI * t) / DEMO_CYCLE_SEC + phase;
+      return center + amplitude * (0.8 * Math.sin(angle) + 0.2 * Math.sin(2 * angle)) + state.demoOffsets[index];
+    });
+    handlePayload({ kind: "topic", topic: "/joint_states", received_at: receivedAt, data: { positions } });
+
+    if (tick % DEMO_RATE_HZ === 0) {
+      handlePayload({ kind: "topic", topic: "/egm/state", received_at: receivedAt, data: { mci_state_label: "running" } });
+      handlePayload({
+        kind: "status",
+        topics: DEMO_TOPICS.map((name, index) => ({ name, age_sec: 0.05 + ((tick / DEMO_RATE_HZ + index) % 4) * 0.08 })),
+      });
+    }
+    tick += 1;
+  }, 1000 / DEMO_RATE_HZ);
+}
+
+function stopDemoStream() {
+  window.clearInterval(state.demoTimer);
+  state.demoTimer = null;
+  state.socketOnline = false;
+}
+
+/**
+ * Answer HMI motion endpoints locally in demo mode, mirroring backend responses.
+ *
+ * @param {string} url API endpoint.
+ * @param {object} payload JSON body.
+ * @returns {object} Simulated response body.
+ */
+function demoMotionResponse(url, payload) {
+  if (url.startsWith("/api/hmi/jog/") && url !== "/api/hmi/jog/stop") {
+    return { status: "sent", axis: payload.axis + 1, speed_percent: payload.speed_percent };
+  }
+  if (url.startsWith("/api/hmi/tcp/")) {
+    return { status: "sent", axis: payload.axis, twist_topic: "demo" };
+  }
+  if (url === "/api/hmi/home") {
+    state.demoOffsets.fill(0);
+    return { status: "sent", speed_percent: payload.speed_percent, duration_sec: 4 };
+  }
+  return { status: "stopped" };
+}
+
 function connectSocket() {
+  if (DEMO_MODE) {
+    startDemoStream();
+    return;
+  }
   // Match the page protocol so deployments behind HTTPS reverse proxies keep
   // browser mixed-content protections happy.
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -314,6 +400,9 @@ function connectSocket() {
  * @returns {Promise<object>} Parsed response body.
  */
 async function postJson(url, payload = {}) {
+  if (DEMO_MODE && url.startsWith("/api/hmi/") && !url.startsWith("/api/hmi/auth/")) {
+    return demoMotionResponse(url, payload);
+  }
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -414,6 +503,7 @@ async function logout() {
     state.socket.close();
     state.socket = null;
   }
+  if (DEMO_MODE) stopDemoStream();
   window.clearTimeout(state.reconnectTimer);
   window.sessionStorage.removeItem(CLIENT_SESSION_KEY);
   await postJson("/api/hmi/auth/logout", {});
@@ -767,6 +857,12 @@ function installControls() {
  * @returns {Promise<void>}
  */
 async function loadMaintenanceSummary() {
+  if (DEMO_MODE) {
+    healthValue.textContent = "96 / 100";
+    maxVelocityValue.textContent = "0.48 rad/s";
+    eventsValue.textContent = "2";
+    return;
+  }
   try {
     const response = await fetch("/api/history/summary?window=24h");
     const data = await response.json();
