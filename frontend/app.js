@@ -173,6 +173,7 @@ const state = {
   demoTimer: null,
   demoStartedAt: null,
   demoSequence: 0,
+  demoSample: null,
   realDataReceived: false,
   forceDemo: new URLSearchParams(window.location.search).get("demo") === "1",
   previousTcpPose: null,
@@ -301,6 +302,8 @@ function stopDemoStream() {
   if (!state.demoTimer) return;
   clearInterval(state.demoTimer);
   state.demoTimer = null;
+  state.demoSample = null;
+  twin.setDemoCell(null);
   demoModeButtonEl?.classList.remove("active");
 }
 
@@ -388,23 +391,54 @@ function updateJointWidgets(data) {
   }
 }
 
+// Joint origins and axes from crb15000_5_95_macro.xacro. The TCP sits 45 mm in
+// front of the flange to match the twin's TCP marker.
+const GOFA_CHAIN = [
+  { origin: [0, 0, 0.265], axis: "z" },
+  { origin: [0, 0, 0], axis: "y" },
+  { origin: [0, 0, 0.444], axis: "y" },
+  { origin: [0, 0, 0.11], axis: "x" },
+  { origin: [0.47, 0, 0], axis: "y" },
+  { origin: [0.101, 0, 0.08], axis: "x" },
+];
+const GOFA_TCP_OFFSET = [0.045, 0, 0];
+
+function axisRotation(axis, angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  if (axis === "x") return [[1, 0, 0], [0, c, -s], [0, s, c]];
+  if (axis === "y") return [[c, 0, s], [0, 1, 0], [-s, 0, c]];
+  return [[c, -s, 0], [s, c, 0], [0, 0, 1]];
+}
+
+function multiplyMatrix(a, b) {
+  return a.map((row) => [0, 1, 2].map((col) => row[0] * b[0][col] + row[1] * b[1][col] + row[2] * b[2][col]));
+}
+
+function rotateVector(m, v) {
+  return m.map((row) => row[0] * v[0] + row[1] * v[1] + row[2] * v[2]);
+}
+
 function estimateTcpPose(positions) {
-  // This lightweight forward estimate is intentionally approximate; it keeps
-  // workspace and health widgets useful when no Cartesian pose topic is present.
-  const [j1 = 0, j2 = 0, j3 = 0, j4 = 0, j5 = 0, j6 = 0] = positions || [];
-  const shoulder = j2;
-  const elbow = j2 + j3;
-  const wrist = j2 + j3 + j5;
-  const radius = 0.24 + Math.cos(shoulder) * 0.34 + Math.cos(elbow) * 0.28 + Math.cos(wrist) * 0.16;
-  const z = 0.42 + Math.sin(shoulder) * 0.28 + Math.sin(elbow) * 0.22 + Math.sin(wrist) * 0.12;
+  // Joint-space forward kinematics of the URDF chain; used when no Cartesian
+  // pose topic is present so workspace and health widgets stay meaningful.
+  let rotation = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  let point = [0, 0, 0];
+  GOFA_CHAIN.forEach((joint, index) => {
+    point = rotateVector(rotation, joint.origin).map((value, axis) => point[axis] + value);
+    rotation = multiplyMatrix(rotation, axisRotation(joint.axis, Number(positions?.[index]) || 0));
+  });
+  point = rotateVector(rotation, GOFA_TCP_OFFSET).map((value, axis) => point[axis] + value);
+  // tool0 is the flange rotated +90 deg about y (flange-tool0 joint in the URDF).
+  const tool = multiplyMatrix(rotation, axisRotation("y", Math.PI / 2));
 
   return {
-    x: Math.cos(j1) * radius,
-    y: Math.sin(j1) * radius,
-    z,
-    roll: j4,
-    pitch: j5,
-    yaw: j1 + j6,
+    x: point[0],
+    y: point[1],
+    z: point[2],
+    roll: Math.atan2(tool[2][1], tool[2][2]),
+    pitch: Math.asin(Math.max(-1, Math.min(1, -tool[2][0]))),
+    yaw: Math.atan2(tool[1][0], tool[0][0]),
   };
 }
 
@@ -1302,7 +1336,9 @@ function updateJointStates(data, topic = "/joint_states") {
   });
 
   state.jointPositions = state.jointPositions.map((fallback, index) => data.positions?.[index] ?? fallback);
-  twin.setJoints(state.jointPositions);
+  // Demo samples arrive at 5 Hz, so the twin tweens between them; live data is
+  // applied as-is to avoid adding display lag to real robot motion.
+  twin.setJoints(state.jointPositions, data.demo ? DEMO_JOINT_INTERVAL_MS / 1000 : 0);
   twinStatusEl.textContent = "synchron";
   twinJointCountEl.textContent = `${data.names.length} Achsen`;
   updateJointWidgets(data);
@@ -1434,7 +1470,7 @@ function handleMessage(payload) {
   updateMessagePreview(payload);
 
   if (payload.type === "sensor_msgs/msg/JointState") {
-    updateJointStates({ ...payload.data, received_at: payload.received_at }, payload.topic);
+    updateJointStates({ ...payload.data, received_at: payload.received_at, demo: payload.demo }, payload.topic);
   } else if (payload.type === "geometry_msgs/msg/PoseStamped" && payload.topic === "/egm/feedback_pose") {
     updateTcpPoseFromPoseStamped(payload.data, payload.received_at ?? Date.now() / 1000);
   } else if (payload.topic === "/egm/raw_input") {
@@ -1463,18 +1499,101 @@ function switchDashboard(view) {
   });
 }
 
-function demoJointPayload(now) {
-  const t = now - state.demoStartedAt;
-  const positions = [
-    Math.sin(t * 0.7) * 0.85,
-    -0.42 + Math.sin(t * 0.46 + 0.8) * 0.38,
-    0.55 + Math.sin(t * 0.58 + 1.7) * 0.52,
-    Math.sin(t * 0.9 + 2.2) * 0.72,
-    0.28 + Math.sin(t * 0.62 + 3.1) * 0.42,
-    Math.sin(t * 1.15 + 1.2) * 0.95,
+// Demo pick & place cell. Joint keyframes were solved offline for the
+// CRB 15000-5/0.95 chain with the tool pointing straight down (A2+A3+A5 = pi/2);
+// A1 selects the station, so hover/grip poses are shared by both stations.
+const DEMO_JOINT_INTERVAL_MS = 200;
+// Stations sit symmetric to the robot's front; the twin frames the camera on them.
+const DEMO_STATION_A1 = { A: 1.1, B: -1.1 };
+const DEMO_POSES = {
+  home: [0, -0.375, 0.67, 0, 1.276, 0],
+  hover: [0, 0.115, 0.635, 0, 0.821, 0],
+  grip: [0, 0.375, 0.735, 0, 0.461, 0],
+};
+const DEMO_PAYLOAD_KG = 1.2;
+
+function demoPose(name, station) {
+  const pose = [...DEMO_POSES[name]];
+  if (station) pose[0] = DEMO_STATION_A1[station];
+  return pose;
+}
+
+function buildDemoCycle() {
+  // One period moves the part A -> B and back B -> A, so the cell state at the
+  // end of the period matches the start and the timeline can simply wrap.
+  const segments = [];
+  let previous = demoPose("home");
+  let start = 0;
+  for (const [from, to] of [["A", "B"], ["B", "A"]]) {
+    // partStation is where the part rests while it is not held (null = in gripper).
+    const steps = [
+      { label: "Anfahrt Pick", pose: demoPose("hover", from), duration: 2.0, partStation: from },
+      { label: "Absenken", pose: demoPose("grip", from), duration: 0.8, partStation: from },
+      { label: "Greifen", pose: demoPose("grip", from), duration: 0.5, partStation: from },
+      { label: "Anheben", pose: demoPose("hover", from), duration: 0.8, partStation: null },
+      { label: "Transfer", pose: demoPose("hover", to), duration: 4.0, partStation: null },
+      { label: "Absenken", pose: demoPose("grip", to), duration: 0.8, partStation: null },
+      { label: "Ablegen", pose: demoPose("grip", to), duration: 0.5, partStation: null },
+      { label: "Rückzug", pose: demoPose("hover", to), duration: 0.8, partStation: to },
+      { label: "Home", pose: demoPose("home"), duration: 1.9, partStation: to },
+      { label: "Warten", pose: demoPose("home"), duration: 0.8, partStation: to },
+    ];
+    for (const step of steps) {
+      segments.push({ ...step, holding: step.partStation === null, from: previous, start, source: from });
+      previous = step.pose;
+      start += step.duration;
+    }
+  }
+  return { segments, period: start };
+}
+
+const DEMO_CYCLE = buildDemoCycle();
+
+/**
+ * Sample the pick & place trajectory with a quintic (minimum-jerk) blend per
+ * segment, so velocities start and end at zero like a real point-to-point move.
+ *
+ * @param {number} t Seconds since the demo started.
+ */
+function sampleDemoTrajectory(t) {
+  const cycleIndex = Math.floor(t / DEMO_CYCLE.period);
+  const local = t - cycleIndex * DEMO_CYCLE.period;
+  const segment = DEMO_CYCLE.segments.findLast((candidate) => candidate.start <= local) ?? DEMO_CYCLE.segments[0];
+  const u = Math.min(1, Math.max(0, (local - segment.start) / segment.duration));
+  const blend = u * u * u * (10 - 15 * u + 6 * u * u);
+  const blendRate = (30 * u * u * (1 - u) * (1 - u)) / segment.duration;
+  const positions = segment.from.map((value, index) => value + (segment.pose[index] - value) * blend);
+  const velocities = segment.from.map((value, index) => (segment.pose[index] - value) * blendRate);
+  // Two transfers per period, so the operator-facing cycle counter counts both.
+  const transferIndex = cycleIndex * 2 + (segment.source === "A" ? 1 : 2);
+  return { positions, velocities, label: segment.label, holding: segment.holding, partStation: segment.partStation, transferIndex };
+}
+
+function demoEfforts(positions, velocities, holding) {
+  // Rough static gravity load on A2/A3/A5 plus viscous friction; enough to make
+  // the effort readouts react to reach and payload without a dynamics model.
+  const [, a2, a3, , a5] = positions;
+  const elbowReach = 0.444 * Math.sin(a2);
+  const wristReach = elbowReach + 0.47 * Math.cos(a2 + a3);
+  const toolReach = wristReach + 0.12 * Math.cos(a2 + a3 + a5);
+  const payload = holding ? DEMO_PAYLOAD_KG : 0;
+  const g = 9.81;
+  const gravity = [
+    0,
+    g * (4.0 * elbowReach * 0.5 + 3.0 * wristReach * 0.6 + (0.8 + payload) * toolReach),
+    g * (3.0 * (wristReach - elbowReach) * 0.6 + (0.8 + payload) * (toolReach - elbowReach)),
+    0,
+    g * (0.8 + payload) * (toolReach - wristReach),
+    0,
   ];
-  const velocities = positions.map((value, index) => Math.cos(t * (0.45 + index * 0.11)) * 0.04 + value * 0.015);
-  const efforts = positions.map((value, index) => Math.sin(t * 0.33 + index) * 0.6 + value * 0.2);
+  return gravity.map((value, index) => value + velocities[index] * 2.5);
+}
+
+function demoJointPayload(now) {
+  const sample = sampleDemoTrajectory(now - state.demoStartedAt);
+  const { positions, velocities } = sample;
+  const efforts = demoEfforts(positions, velocities, sample.holding);
+  state.demoSample = sample;
 
   return {
     demo: true,
@@ -1538,8 +1657,18 @@ function startDemoStream(force = false) {
     }
     const now = Date.now() / 1000;
     state.demoSequence += 1;
-    handleMessage(demoStatusPayload(now));
     handleMessage(demoJointPayload(now));
+    const sample = state.demoSample;
+    cycleValueEl.textContent = `#${sample.transferIndex} ${sample.label}`;
+    twinPoseLabelEl.textContent = "Pick & Place";
+    twin.setDemoCell({
+      stations: { A: demoPose("grip", "A"), B: demoPose("grip", "B") },
+      partStation: sample.partStation,
+    });
+
+    // Joints stream at 5 Hz for a smooth twin; slower topics keep their old pace.
+    if (state.demoSequence % 3 !== 1) return;
+    handleMessage(demoStatusPayload(now));
     handleMessage({
       demo: true,
       kind: "topic",
@@ -1556,7 +1685,7 @@ function startDemoStream(force = false) {
       },
     });
 
-    if (state.demoSequence % 4 === 0) {
+    if (state.demoSequence % 12 === 1) {
       handleMessage({
         demo: true,
         kind: "topic",
@@ -1584,7 +1713,7 @@ function startDemoStream(force = false) {
   };
 
   tick();
-  state.demoTimer = setInterval(tick, 500);
+  state.demoTimer = setInterval(tick, DEMO_JOINT_INTERVAL_MS);
 }
 
 function connect() {
@@ -2426,12 +2555,112 @@ function createDigitalTwin(canvas, options = {}) {
     options.onModelMode?.("mesh");
   }
 
-  function setJoints(values) {
+  const tween = { from: [], to: [], start: 0, duration: 0 };
+  let renderedJoints = [];
+
+  function applyJoints(values) {
+    renderedJoints = [...values];
     activeAxes.forEach((axis, index) => {
       const value = values[index] ?? 0;
       axis.group.rotation.set(0, 0, 0);
       axis.group.rotation[axis.axis] = value * axis.sign + axis.offset;
     });
+  }
+
+  function setJoints(values, transitionSec = 0) {
+    tween.from = renderedJoints.length ? renderedJoints : [...values];
+    tween.to = [...values];
+    tween.start = performance.now() / 1000;
+    tween.duration = transitionSec;
+    if (!transitionSec) applyJoints(tween.to);
+  }
+
+  function updateTween() {
+    if (!tween.duration) return;
+    const u = Math.min(1, (performance.now() / 1000 - tween.start) / tween.duration);
+    applyJoints(tween.to.map((value, index) => (tween.from[index] ?? value) + (value - (tween.from[index] ?? value)) * u));
+    if (u >= 1) tween.duration = 0;
+  }
+
+  // Demo work cell: two stations and one part that rides on the TCP while held.
+  const PART_SIZE = 0.1;
+  const cellMaterials = {
+    stand: new THREE.MeshStandardMaterial({ color: 0x323b47, roughness: 0.7, metalness: 0.15 }),
+    top: new THREE.MeshStandardMaterial({ color: 0x5b6878, roughness: 0.5, metalness: 0.2 }),
+    marker: new THREE.MeshStandardMaterial({ color: 0x38c6a3, emissive: 0x0f4f43, roughness: 0.45 }),
+    part: new THREE.MeshStandardMaterial({ color: 0xffbd4a, emissive: 0x3a2400, roughness: 0.4, metalness: 0.1 }),
+  };
+  const cell = new THREE.Group();
+  cell.visible = false;
+  root.add(cell);
+  const part = new THREE.Mesh(new THREE.BoxGeometry(PART_SIZE, PART_SIZE, PART_SIZE), cellMaterials.part);
+  part.castShadow = true;
+  cell.add(part);
+  const cellState = { config: null, modelKey: null, stations: {} };
+  const tcpWorld = new THREE.Vector3();
+
+  function tcpWorldPositionFor(values) {
+    const restore = renderedJoints;
+    applyJoints(values);
+    root.updateMatrixWorld(true);
+    const position = activeTool.getWorldPosition(new THREE.Vector3());
+    applyJoints(restore);
+    return position;
+  }
+
+  function buildStations() {
+    // Stations sit exactly under the TCP grip pose, so the part is handed over
+    // without a visible jump regardless of which arm model is active.
+    cell.children.filter((child) => child !== part).forEach((child) => cell.remove(child));
+    cellState.stations = {};
+    for (const [name, joints] of Object.entries(cellState.config.stations)) {
+      const grip = tcpWorldPositionFor(joints);
+      const topY = Math.max(0.05, grip.y - PART_SIZE);
+      const station = new THREE.Group();
+      station.position.set(grip.x, 0, grip.z);
+      station.rotation.y = Math.atan2(grip.x, grip.z);
+      const stand = new THREE.Mesh(new THREE.BoxGeometry(0.2, topY - 0.02, 0.2), cellMaterials.stand);
+      stand.position.y = (topY - 0.02) / 2;
+      const top = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.3), cellMaterials.top);
+      top.position.y = topY - 0.01;
+      const marker = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.004, 0.02), cellMaterials.marker);
+      marker.position.set(0, topY + 0.002, 0.14);
+      station.add(stand, top, marker);
+      cell.add(station);
+      cellState.stations[name] = new THREE.Vector3(grip.x, topY + PART_SIZE / 2, grip.z);
+    }
+    cellState.modelKey = activeTool.uuid;
+    if (!cellState.framed) {
+      // Face the cell once when the demo starts; the operator can orbit freely after.
+      const center = Object.values(cellState.stations).reduce((sum, point) => sum.add(point), new THREE.Vector3());
+      cameraState.yaw = Math.atan2(center.x, center.z);
+      cameraState.pitch = 0.48;
+      cameraState.radius = 3.1;
+      cellState.framed = true;
+    }
+  }
+
+  function setDemoCell(config) {
+    if (!config) cellState.framed = false;
+    cellState.config = config;
+    cell.visible = Boolean(config);
+  }
+
+  function updateCell() {
+    if (!cellState.config) return;
+    if (cellState.modelKey !== activeTool.uuid) {
+      // The mesh model resets the camera when it finishes loading, so re-frame.
+      cellState.framed = false;
+      buildStations();
+    }
+    const resting = cellState.stations[cellState.config.partStation];
+    if (resting) {
+      part.position.copy(resting);
+    } else {
+      activeTool.getWorldPosition(tcpWorld);
+      part.position.set(tcpWorld.x, tcpWorld.y - PART_SIZE / 2, tcpWorld.z);
+    }
+    part.rotation.y = Math.atan2(part.position.x, part.position.z);
   }
 
   function resize() {
@@ -2488,12 +2717,15 @@ function createDigitalTwin(canvas, options = {}) {
   function animate() {
     resize();
     updateCamera();
+    updateTween();
     activeTool.rotation.y += 0.006;
+    root.updateMatrixWorld(true);
+    updateCell();
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
   }
 
   animate();
 
-  return { setJoints };
+  return { setJoints, setDemoCell };
 }
