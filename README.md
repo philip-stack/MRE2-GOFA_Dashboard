@@ -2,6 +2,10 @@
 
 Web-Dashboard für ROS2-Daten eines ABB GoFa Roboters. Die App läuft in Docker, liest ROS2-Topics im Container und streamt die Daten per WebSocket in den Browser.
 
+![Dashboard-Übersicht im Demo-Modus](docs/media/dashboard-overview.gif)
+
+![Digital Twin mit Pick & Place, per Maus gedreht und gezoomt](docs/media/digital-twin.gif)
+
 ## Funktionen
 
 - Live-Dashboard für ABB GoFa / CRB 15000 mit Joint States, TCP-Pose, EGM-Zustand und 3D Digital Twin
@@ -118,6 +122,8 @@ Das GoFa HMI ist ein Addon zum bestehenden Dashboard. Das normale Dashboard blei
 ```text
 http://localhost:8080/hmi
 ```
+
+![GoFa HMI im Demo-Modus: Linear-Jog, Speed-Regler und Home-Bestätigung](docs/media/hmi.gif)
 
 ### HMI-Login verschlüsseln
 
@@ -251,6 +257,8 @@ EGM_ENABLE=1 docker compose up -d --build --force-recreate
 
 ## Datenbank und History
 
+![Maintenance-Ansicht mit Zeitfilter, Wear Score je Achse und Event-Timeline](docs/media/maintenance.gif)
+
 Der Compose-Stack startet standardmäßig:
 
 - `sman-dashboard-db`: PostgreSQL auf `127.0.0.1:55433`
@@ -278,6 +286,12 @@ http://localhost:8080/?demo=1
 ```
 
 Alternativ im Dashboard oben rechts den Button `Demo` verwenden.
+
+Das HMI hat einen eigenen Demo-Modus mit simulierten Achswerten. Jog-, TCP- und Home-Befehle werden dabei nur im Browser beantwortet und nicht an das Backend gesendet:
+
+```text
+http://localhost:8080/hmi?demo=1
+```
 
 ## ROS2-Kommunikation
 
