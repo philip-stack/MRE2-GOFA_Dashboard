@@ -19,6 +19,8 @@ Web-Dashboard für ROS2-Daten eines ABB GoFa Roboters. Die App läuft in Docker,
 - Maintenance-Ansicht mit persistierten Trends, Zeitfiltern, Event-Timeline und dismissbaren Event-Toasts
 - PostgreSQL-Datenbank als Docker-Service, SQLite als lokaler Fallback
 - Mail-Benachrichtigungen für kritische Events
+- Dashboard und HMI auf Deutsch (Standard) oder Englisch, umschaltbar über das Globus-Icon oben oder per `?lang=en`
+- Dark Mode (Standard) und Light Mode, umschaltbar über das Sonne/Mond-Icon oben; die Wahl merkt sich der Browser
 
 ## Start mit Docker
 

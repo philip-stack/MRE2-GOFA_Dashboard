@@ -9,6 +9,9 @@
 import * as THREE from "/assets/vendor/three.module.min.js";
 import { STLLoader } from "/assets/vendor/three-addons/loaders/STLLoader.js";
 
+// Loaded as a deferred classic script before this module (see index.html).
+const { t, locale } = window.i18n;
+
 const statusEl = document.getElementById("connectionStatus");
 const rosStateEl = document.getElementById("rosState");
 const topicCountEl = document.getElementById("topicCount");
@@ -102,8 +105,21 @@ const egmRapidValueEl = document.getElementById("egmRapidValue");
 const egmConvergenceValueEl = document.getElementById("egmConvergenceValue");
 const egmUtilizationDeveloperValueEl = document.getElementById("egmUtilizationDeveloperValue");
 
+// Chart ink (grid, axes, captions) comes from CSS tokens so the canvases follow
+// the light/dark theme; it is re-read when the theme changes.
+function readChartInk() {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    grid: style.getPropertyValue("--chart-grid").trim(),
+    axis: style.getPropertyValue("--chart-axis").trim(),
+    text: style.getPropertyValue("--chart-text").trim(),
+  };
+}
+let chartInk = readChartInk();
+
 const AXIS_ACTIVITY_COLORS = ["#20c997", "#5cc8ff", "#ffbd4a", "#ff5c8a", "#a78bfa", "#7ee787"];
-const AXIS_ACTIVITY_LABELS = ["Achse 1", "Achse 2", "Achse 3", "Achse 4", "Achse 5", "Achse 6"];
+// German source labels; the legend translates them with t() when it renders.
+const AXIS_ACTIVITY_LABELS = [1, 2, 3, 4, 5, 6].map((number) => ({ source: "Achse {number}", params: { number } }));
 
 const charts = {
   jointActivity: createAxisActivityChart(document.getElementById("jointActivityChart"), jointActivityLegendEl, {
@@ -236,12 +252,12 @@ function formatAge(age) {
 
 function formatTime(timestamp) {
   if (!timestamp) return "-";
-  return new Date(timestamp * 1000).toLocaleTimeString("de-DE");
+  return new Date(timestamp * 1000).toLocaleTimeString(locale());
 }
 
 function formatDateTime(timestamp) {
   if (!timestamp) return "-";
-  return new Date(timestamp * 1000).toLocaleString("de-DE", {
+  return new Date(timestamp * 1000).toLocaleString(locale(), {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -284,12 +300,12 @@ function quaternionToEuler(orientation = {}) {
 }
 
 function effortLabel(value) {
-  if (!Number.isFinite(value)) return "nicht publiziert";
+  if (!Number.isFinite(value)) return t("nicht publiziert");
   return `${value.toFixed(3)} Nm`;
 }
 
 function velocityLabel(value) {
-  if (!Number.isFinite(value)) return "nicht publiziert";
+  if (!Number.isFinite(value)) return t("nicht publiziert");
   return `${value.toFixed(3)} rad/s`;
 }
 
@@ -383,7 +399,7 @@ function updateJointWidgets(data) {
   const range = positions.length ? Math.max(...positions) - Math.min(...positions) : 0;
 
   jointActivityValueEl.textContent = `Ø ${activity.toFixed(3)} rad/s`;
-  jointRangeValueEl.textContent = `Spanne ${range.toFixed(2)} rad`;
+  jointRangeValueEl.textContent = t("Spanne {value} rad", { value: range.toFixed(2) });
   state.currentJointVelocities = axisVelocities;
   if (state.graphWindow === "live") {
     charts.jointActivity.push(axisVelocities);
@@ -564,18 +580,18 @@ function updateHealth(data, quality, tcp) {
   const nearLimit = (data.positions || []).some((value) => Math.abs(value) > Math.PI * 0.86);
 
   if (!jointTopic || jointTopic.age_sec > 2.5) issues.push({ level: "danger", label: "Joint State stale", value: formatAge(jointTopic?.age_sec) });
-  if (quality.latency > 250) issues.push({ level: "warn", label: "Hohe Latenz", value: `${quality.latency.toFixed(0)} ms` });
-  if (quality.jitter > 80) issues.push({ level: "warn", label: "Hoher Jitter", value: `${quality.jitter.toFixed(0)} ms` });
+  if (quality.latency > 250) issues.push({ level: "warn", label: t("Hohe Latenz"), value: `${quality.latency.toFixed(0)} ms` });
+  if (quality.jitter > 80) issues.push({ level: "warn", label: t("Hoher Jitter"), value: `${quality.jitter.toFixed(0)} ms` });
   if (maxVelocity > 1.2) issues.push({ level: "warn", label: "Velocity Spike", value: `${maxVelocity.toFixed(2)} rad/s` });
-  if (nearLimit) issues.push({ level: "warn", label: "Achse nahe Limit", value: "> 86 %" });
-  if (tcp.speed > 0.65) issues.push({ level: "warn", label: "TCP schnell", value: `${tcp.speed.toFixed(2)} m/s` });
+  if (nearLimit) issues.push({ level: "warn", label: t("Achse nahe Limit"), value: "> 86 %" });
+  if (tcp.speed > 0.65) issues.push({ level: "warn", label: t("TCP schnell"), value: `${tcp.speed.toFixed(2)} m/s` });
 
   // The score is a triage signal, not a certified safety value; the issue list
   // stays visible so operators can see exactly which heuristic moved it.
   state.healthIssues = issues;
   const scorePenalty = issues.reduce((sum, issue) => sum + (issue.level === "danger" ? 45 : 14), 0);
   state.healthScore = Math.max(0, Math.min(100, Math.round(100 - scorePenalty)));
-  const stateLabel = issues.some((item) => item.level === "danger") ? "Kritisch" : issues.length ? "Warnung" : "OK";
+  const stateLabel = issues.some((item) => item.level === "danger") ? t("Kritisch") : issues.length ? t("Warnung") : "OK";
 
   healthStateValueEl.textContent = issues.some((item) => item.level === "danger") ? "Critical" : issues.length ? "Warn" : "OK";
   healthScoreValueEl.textContent = String(state.healthScore);
@@ -588,7 +604,7 @@ function updateHealth(data, quality, tcp) {
   healthReasonListEl.innerHTML = "";
   userWarningListEl.innerHTML = "";
 
-  const rows = issues.length ? issues : [{ level: "ok", label: "Alle Checks stabil", value: "OK" }];
+  const rows = issues.length ? issues : [{ level: "ok", label: t("Alle Checks stabil"), value: "OK" }];
   for (const issue of rows) {
     const row = document.createElement("div");
     row.className = `health-item ${issue.level}`;
@@ -601,9 +617,9 @@ function updateHealth(data, quality, tcp) {
     userWarningListEl.appendChild(userWarning);
   }
 
-  dataQualityLabelEl.textContent = quality.latency > 250 || quality.jitter > 80 ? "pruefen" : "stabil";
+  dataQualityLabelEl.textContent = quality.latency > 250 || quality.jitter > 80 ? t("pruefen") : t("stabil");
   userFreshnessValueEl.textContent = `${quality.dataAgeMs.toFixed(0)} ms`;
-  userSignalValueEl.textContent = jointTopic && jointTopic.age_sec <= 2.5 ? "Live" : "kein Stream";
+  userSignalValueEl.textContent = jointTopic && jointTopic.age_sec <= 2.5 ? "Live" : t("kein Stream");
   userIssueCountEl.textContent = String(issues.length);
 }
 
@@ -718,8 +734,11 @@ function renderMaintenanceSummary(summary) {
     row.className = "axis-wear-item";
     row.innerHTML = `
       <div>
-        <strong>Achse ${axis.axis}</strong>
-        <span>${(axis.distance_rad || 0).toFixed(1)} rad Weg &middot; ${axis.direction_changes || 0} Richtungswechsel</span>
+        <strong>${t("Achse {number}", { number: axis.axis })}</strong>
+        <span>${t("{distance} rad Weg · {changes} Richtungswechsel", {
+          distance: (axis.distance_rad || 0).toFixed(1),
+          changes: axis.direction_changes || 0,
+        })}</span>
       </div>
       <div class="wear-bar"><span style="width: ${Math.min(100, score)}%"></span></div>
       <b>${score}</b>
@@ -732,12 +751,12 @@ function renderMaintenanceSummary(summary) {
   eventCountValueEl.textContent = `${events.length} Events`;
   maintenanceTimelineEl.innerHTML = "";
   if (!events.length) {
-    maintenanceTimelineEl.innerHTML = '<p class="empty">Keine Ereignisse im gewaehlten Zeitraum.</p>';
+    maintenanceTimelineEl.innerHTML = `<p class="empty">${t("Keine Ereignisse im gewaehlten Zeitraum.")}</p>`;
   }
   for (const event of events) {
     const row = document.createElement("div");
     row.className = `timeline-item ${event.severity}`;
-    const acknowledged = event.acknowledged_at ? `<span>quittiert ${formatTime(event.acknowledged_at)}</span>` : "";
+    const acknowledged = event.acknowledged_at ? `<span>${t("quittiert {time}", { time: formatTime(event.acknowledged_at) })}</span>` : "";
     row.innerHTML = `
       <div>
         <time>${formatTime(event.created_at)}</time>
@@ -745,7 +764,7 @@ function renderMaintenanceSummary(summary) {
         <p>${event.detail}</p>
         ${acknowledged}
       </div>
-      ${event.acknowledged_at ? "" : `<button type="button" data-ack-event="${event.id}">Quittieren</button>`}
+      ${event.acknowledged_at ? "" : `<button type="button" data-ack-event="${event.id}">${t("Quittieren")}</button>`}
     `;
     maintenanceTimelineEl.appendChild(row);
   }
@@ -754,7 +773,7 @@ function renderMaintenanceSummary(summary) {
   mailQueueValueEl.textContent = String(mailQueue.length);
   mailQueueListEl.innerHTML = "";
   if (!mailQueue.length) {
-    mailQueueListEl.innerHTML = '<p class="empty">Keine Mail-Eintraege.</p>';
+    mailQueueListEl.innerHTML = `<p class="empty">${t("Keine Mail-Eintraege.")}</p>`;
   }
   for (const mail of mailQueue) {
     const row = document.createElement("div");
@@ -775,8 +794,8 @@ function renderMaintenanceSummary(summary) {
   mailWeeklyEl.checked = settings.weekly_report !== false;
   renderMailRecipients(settings.all_recipients || []);
   mailSettingsStateEl.textContent = settings.smtp_configured
-    ? (settings.mail_enabled === false ? "pausiert" : settings.recipients ? "aktiv" : "Empfaenger fehlen")
-    : "SMTP fehlt";
+    ? (settings.mail_enabled === false ? t("pausiert") : settings.recipients ? t("aktiv") : t("Empfaenger fehlen"))
+    : t("SMTP fehlt");
 }
 
 function syncEventToasts(events, shouldNotify) {
@@ -805,7 +824,7 @@ function showEventToast(event) {
   toast.className = `event-toast ${event.severity || "info"}`;
   const content = document.createElement("div");
   const title = document.createElement("strong");
-  title.textContent = event.title || "Neues Event";
+  title.textContent = event.title || t("Neues Event");
   const detail = document.createElement("p");
   detail.textContent = event.detail || event.type || "";
   const meta = document.createElement("span");
@@ -814,7 +833,7 @@ function showEventToast(event) {
 
   const close = document.createElement("button");
   close.type = "button";
-  close.setAttribute("aria-label", "Meldung schließen");
+  close.setAttribute("aria-label", t("Meldung schließen"));
   close.textContent = "×";
   close.addEventListener("click", () => toast.remove());
   toast.append(content, close);
@@ -826,7 +845,7 @@ function renderMailRecipients(recipients) {
   if (!mailRecipientListEl) return;
   mailRecipientListEl.innerHTML = "";
   if (!recipients.length) {
-    mailRecipientListEl.innerHTML = '<p class="empty">Noch keine Empfaenger gespeichert.</p>';
+    mailRecipientListEl.innerHTML = `<p class="empty">${t("Noch keine Empfaenger gespeichert.")}</p>`;
     return;
   }
   for (const recipient of recipients) {
@@ -835,7 +854,7 @@ function renderMailRecipients(recipients) {
     const email = document.createElement("strong");
     email.textContent = recipient.email;
     const stateLabel = document.createElement("span");
-    stateLabel.textContent = recipient.subscribed ? "abonniert" : "deaktiviert";
+    stateLabel.textContent = recipient.subscribed ? t("abonniert") : t("deaktiviert");
     const switchBox = document.createElement("input");
     switchBox.type = "checkbox";
     switchBox.checked = recipient.subscribed;
@@ -953,7 +972,7 @@ async function persistMailSettings() {
       await refreshMaintenanceSummary();
     }
   } catch {
-    mailSettingsStateEl.textContent = "Fehler";
+    mailSettingsStateEl.textContent = t("Fehler");
   }
 }
 
@@ -969,12 +988,12 @@ async function updateMailRecipient(email, subscribed) {
       await refreshMaintenanceSummary();
     }
   } catch {
-    mailSettingsStateEl.textContent = "Fehler";
+    mailSettingsStateEl.textContent = t("Fehler");
   }
 }
 
 async function sendTestMail() {
-  testMailStateEl.textContent = "sendet...";
+  testMailStateEl.textContent = t("sendet...");
   await persistMailSettings();
   try {
     const response = await fetch("/api/mail/test", {
@@ -983,22 +1002,22 @@ async function sendTestMail() {
       body: JSON.stringify({ recipients: mailRecipientsEl.value }),
     });
     if (!response.ok) {
-      testMailStateEl.textContent = "Fehler";
+      testMailStateEl.textContent = t("Fehler");
       return;
     }
     const result = await response.json();
     testMailStateEl.textContent = result.status === "sent"
-      ? "gesendet"
+      ? t("gesendet")
       : result.status === "needs_recipients"
-        ? "Empfaenger fehlt"
+        ? t("Empfaenger fehlt")
         : result.status === "smtp_missing"
-          ? "SMTP fehlt"
+          ? t("SMTP fehlt")
         : result.error
-          ? "SMTP Fehler"
+          ? t("SMTP Fehler")
           : result.status;
     await refreshMaintenanceSummary();
   } catch {
-    testMailStateEl.textContent = "Fehler";
+    testMailStateEl.textContent = t("Fehler");
   }
 }
 
@@ -1032,20 +1051,20 @@ function updateShowcaseStatus(data, receivedAt) {
   readyStateEl.textContent = hasFreshJointState && hasPositions ? "Ready" : "Waiting";
   setCardState(readyCardEl, hasFreshJointState && hasPositions ? "ok" : "warn");
 
-  motionStateEl.textContent = moving ? "Bewegt" : "Steht";
+  motionStateEl.textContent = moving ? t("Bewegt") : t("Steht");
   setCardState(motionCardEl, moving ? "ok" : "warn");
   state.currentMotionLabel = moving ? "In Bewegung" : "Steht";
   if (moving) {
     state.lastMovingAt = receivedAt;
     state.idleStartedAt = null;
-    cycleStateValueEl.textContent = "aktiv";
-    cycleValueEl.textContent = "Bewegung";
+    cycleStateValueEl.textContent = t("aktiv");
+    cycleValueEl.textContent = t("Bewegung");
   } else {
     state.idleStartedAt ??= receivedAt;
     const idleSeconds = Math.max(0, receivedAt - state.idleStartedAt);
     idleValueEl.textContent = `${idleSeconds.toFixed(1)} s`;
-    cycleStateValueEl.textContent = idleSeconds > 3 ? "wartet" : "bereit";
-    cycleValueEl.textContent = state.lastMovingAt ? `letzte Bewegung ${formatAge(receivedAt - state.lastMovingAt)}` : "-";
+    cycleStateValueEl.textContent = idleSeconds > 3 ? t("wartet") : t("bereit");
+    cycleValueEl.textContent = state.lastMovingAt ? t("letzte Bewegung {age}", { age: formatAge(receivedAt - state.lastMovingAt) }) : "-";
   }
 
   updateLiveRate(receivedAt);
@@ -1059,7 +1078,7 @@ function renderJointPopover(detail) {
   const effortField = Number.isFinite(detail.effort)
     ? `
       <div class="popover-field">
-        <span>Moment</span>
+        <span>${t("Moment")}</span>
         <strong>${effortLabel(detail.effort)}</strong>
       </div>
     `
@@ -1070,24 +1089,24 @@ function renderJointPopover(detail) {
         <span>${detail.topic}</span>
         <h3>${detail.displayName}</h3>
       </div>
-      <button class="popover-close" type="button" aria-label="Details schliessen">×</button>
+      <button class="popover-close" type="button" aria-label="${t("Details schliessen")}">×</button>
     </div>
     <div class="popover-grid">
       <div class="popover-field">
-        <span>Achswinkel</span>
+        <span>${t("Achswinkel")}</span>
         <strong>${formatNumber(position)} rad</strong>
       </div>
       <div class="popover-field">
-        <span>Grad</span>
+        <span>${t("Grad")}</span>
         <strong>${formatNumber(degrees, 1)} deg</strong>
       </div>
       <div class="popover-field">
-        <span>Geschwindigkeit</span>
+        <span>${t("Geschwindigkeit")}</span>
         <strong>${velocityLabel(detail.velocity)}</strong>
       </div>
       ${effortField}
       <div class="popover-field">
-        <span>Normierter Weg</span>
+        <span>${t("Normierter Weg")}</span>
         <strong>${formatNumber(detail.normalized, 1)} %</strong>
       </div>
       <div class="popover-field">
@@ -1175,13 +1194,13 @@ function updateTopics(statusTopics = []) {
   if (!jointTopic || jointTopic.age_sec > 2.5) {
     readyStateEl.textContent = "Waiting";
     setCardState(readyCardEl, "warn");
-    userSignalValueEl.textContent = "kein Stream";
-    dataQualityLabelEl.textContent = "unterbrochen";
+    userSignalValueEl.textContent = t("kein Stream");
+    dataQualityLabelEl.textContent = t("unterbrochen");
     if (jointTopic?.age_sec > 4) {
-      motionStateEl.textContent = "Kein Live-Datenstrom";
+      motionStateEl.textContent = t("Kein Live-Datenstrom");
       setCardState(motionCardEl, "warn");
       state.currentMotionLabel = "Steht";
-      twinStatusEl.textContent = "letzte Pose";
+      twinStatusEl.textContent = t("letzte Pose");
       twinCanvasEl.classList.add("stale");
     }
   } else {
@@ -1192,8 +1211,9 @@ function updateTopics(statusTopics = []) {
   developerTopicListEl.innerHTML = "";
 
   if (allNames.size === 0) {
-    if (topicListEl) topicListEl.innerHTML = '<p class="empty">Noch keine Topics empfangen.</p>';
-    developerTopicListEl.innerHTML = '<p class="empty">Noch keine Topics empfangen.</p>';
+    const empty = `<p class="empty">${t("Noch keine Topics empfangen.")}</p>`;
+    if (topicListEl) topicListEl.innerHTML = empty;
+    developerTopicListEl.innerHTML = empty;
     return;
   }
 
@@ -1204,7 +1224,7 @@ function updateTopics(statusTopics = []) {
     row.className = "topic-item";
     row.innerHTML = `
       <strong>${configured?.label || name}</strong>
-      <span>${topic ? formatAge(topic.age_sec) : "wartet"}</span>
+      <span>${topic ? formatAge(topic.age_sec) : t("wartet")}</span>
     `;
     if (topicListEl) topicListEl.appendChild(row);
 
@@ -1213,9 +1233,9 @@ function updateTopics(statusTopics = []) {
     developerRow.innerHTML = `
       <div>
         <strong>${name}</strong>
-        <small>${configured?.type || topic?.type || "konfiguriert"}</small>
+        <small>${configured?.type || topic?.type || t("konfiguriert")}</small>
       </div>
-      <span>${topic ? formatAge(topic.age_sec) : "wartet"}</span>
+      <span>${topic ? formatAge(topic.age_sec) : t("wartet")}</span>
     `;
     developerTopicListEl.appendChild(developerRow);
   }
@@ -1247,8 +1267,9 @@ function updateJointStates(data, topic = "/joint_states") {
   developerJointListEl.innerHTML = "";
 
   if (!data.names?.length) {
-    jointListEl.innerHTML = '<p class="empty">Noch keine Joint-State-Daten.</p>';
-    developerJointListEl.innerHTML = '<p class="empty">Noch keine Joint-State-Daten.</p>';
+    const empty = `<p class="empty">${t("Noch keine Joint-State-Daten.")}</p>`;
+    jointListEl.innerHTML = empty;
+    developerJointListEl.innerHTML = empty;
     return;
   }
 
@@ -1339,8 +1360,8 @@ function updateJointStates(data, topic = "/joint_states") {
   // Demo samples arrive at 5 Hz, so the twin tweens between them; live data is
   // applied as-is to avoid adding display lag to real robot motion.
   twin.setJoints(state.jointPositions, data.demo ? DEMO_JOINT_INTERVAL_MS / 1000 : 0);
-  twinStatusEl.textContent = "synchron";
-  twinJointCountEl.textContent = `${data.names.length} Achsen`;
+  twinStatusEl.textContent = t("synchron");
+  twinJointCountEl.textContent = t("{count} Achsen", { count: data.names.length });
   updateJointWidgets(data);
   updateShowcaseStatus(data, receivedAt);
   const hasFreshEgmTcp = state.lastTcpPoseReceivedAt !== null && receivedAt - state.lastTcpPoseReceivedAt < 1.0;
@@ -1646,7 +1667,7 @@ function startDemoStream(force = false) {
     { name: "/egm/state", type: "abb/egm/RobotState", label: "EGM State" },
   ];
   rosStateEl.textContent = "demo";
-  setConnection(true, "Demo Daten");
+  setConnection(true, t("Demo Daten"));
   demoModeButtonEl?.classList.add("active");
   updateTopics();
 
@@ -1659,7 +1680,7 @@ function startDemoStream(force = false) {
     state.demoSequence += 1;
     handleMessage(demoJointPayload(now));
     const sample = state.demoSample;
-    cycleValueEl.textContent = `#${sample.transferIndex} ${sample.label}`;
+    cycleValueEl.textContent = `#${sample.transferIndex} ${t(sample.label)}`;
     twinPoseLabelEl.textContent = "Pick & Place";
     twin.setDemoCell({
       stations: { A: demoPose("grip", "A"), B: demoPose("grip", "B") },
@@ -1725,7 +1746,7 @@ function connect() {
 
   socket.addEventListener("open", () => {
     if (!state.demoTimer) {
-      setConnection(true, "Verbunden");
+      setConnection(true, t("Verbunden"));
     }
     if (state.reconnectTimer) {
       clearTimeout(state.reconnectTimer);
@@ -1740,23 +1761,24 @@ function connect() {
 
   socket.addEventListener("close", () => {
     if (!state.demoTimer) {
-      setConnection(false, "Getrennt");
+      setConnection(false, t("Getrennt"));
     }
     state.reconnectTimer = setTimeout(connect, 1500);
   });
 
   socket.addEventListener("error", () => {
     if (!state.demoTimer) {
-      setConnection(false, "Fehler");
+      setConnection(false, t("Fehler"));
     }
     socket.close();
   });
 }
 
-jointListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
-if (topicListEl) topicListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
-developerJointListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
-developerTopicListEl.innerHTML = '<p class="empty">Warte auf ROS2-Daten...</p>';
+const waitingMarkup = `<p class="empty">${t("Warte auf ROS2-Daten...")}</p>`;
+jointListEl.innerHTML = waitingMarkup;
+if (topicListEl) topicListEl.innerHTML = waitingMarkup;
+developerJointListEl.innerHTML = waitingMarkup;
+developerTopicListEl.innerHTML = waitingMarkup;
 twin.setJoints(state.jointPositions);
 charts.jointPositions.setValues(state.jointPositions);
 Object.values(charts).forEach((chart) => chart.draw());
@@ -1780,13 +1802,13 @@ messagePreviewFilterEl?.addEventListener("change", () => {
   state.messagePreviewFilter = messagePreviewFilterEl.value;
   state.lastMessagePreviewAt = 0;
   messagePreviewEl.textContent = "{}";
-  if (messagePreviewTopicEl) messagePreviewTopicEl.textContent = "wartet";
+  if (messagePreviewTopicEl) messagePreviewTopicEl.textContent = t("wartet");
 });
 
 messagePreviewPauseEl?.addEventListener("click", () => {
   state.messagePreviewPaused = !state.messagePreviewPaused;
   messagePreviewPauseEl.classList.toggle("active", state.messagePreviewPaused);
-  messagePreviewPauseEl.textContent = state.messagePreviewPaused ? "Weiter" : "Pause";
+  messagePreviewPauseEl.textContent = state.messagePreviewPaused ? t("Weiter") : "Pause";
 });
 
 maintenanceWindowEl?.addEventListener("click", (event) => {
@@ -1843,6 +1865,22 @@ document.addEventListener("click", (event) => {
 window.addEventListener("resize", refreshOpenJointPopover);
 window.addEventListener("resize", () => Object.values(charts).forEach((chart) => chart.draw()));
 
+// Live widgets pick up the new language on their next update; views that only
+// render occasionally are redrawn right away.
+window.uiTheme.onChange(() => {
+  chartInk = readChartInk();
+  charts.workspace.applyInk();
+  twin.applyInk();
+  Object.values(charts).forEach((chart) => chart.draw());
+});
+
+window.i18n.onChange(() => {
+  charts.jointActivity.renderLegend();
+  Object.values(charts).forEach((chart) => chart.draw());
+  refreshOpenJointPopover();
+  refreshMaintenanceSummary();
+});
+
 function prepareCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1860,10 +1898,10 @@ function prepareCanvas(canvas) {
 }
 
 function drawGrid(ctx, width, height, area = { left: 38, right: width - 14, top: 16, bottom: height - 30 }, yTicks = []) {
-  ctx.strokeStyle = "rgba(157, 166, 178, 0.16)";
+  ctx.strokeStyle = chartInk.grid;
   ctx.lineWidth = 1;
   ctx.font = "11px Inter, system-ui, sans-serif";
-  ctx.fillStyle = "rgba(213, 220, 231, 0.72)";
+  ctx.fillStyle = chartInk.text;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   for (let index = 0; index < 4; index += 1) {
@@ -1877,7 +1915,7 @@ function drawGrid(ctx, width, height, area = { left: 38, right: width - 14, top:
       ctx.fillText(yTicks[index], area.left - 7, y);
     }
   }
-  ctx.strokeStyle = "rgba(213, 220, 231, 0.34)";
+  ctx.strokeStyle = chartInk.axis;
   ctx.beginPath();
   ctx.moveTo(area.left, area.top);
   ctx.lineTo(area.left, area.bottom);
@@ -1917,7 +1955,7 @@ function createAxisActivityChart(canvas, legendEl, options = {}) {
       button.className = `axis-legend-button${active[index] ? "" : " inactive"}`;
       button.style.setProperty("--axis-color", colors[index] || "#20c997");
       button.setAttribute("aria-pressed", String(active[index]));
-      button.innerHTML = `<span class="axis-color-dot" aria-hidden="true"></span><span>${label}</span>`;
+      button.innerHTML = `<span class="axis-color-dot" aria-hidden="true"></span><span>${t(label.source, label.params)}</span>`;
       button.addEventListener("click", () => {
         const visibleCount = active.filter(Boolean).length;
         // First click isolates one axis; later clicks toggle axes while keeping
@@ -1952,15 +1990,15 @@ function createAxisActivityChart(canvas, legendEl, options = {}) {
     const plotHeight = Math.max(1, bottom - top);
     drawGrid(ctx, width, height, { left, right, top, bottom }, [niceTick(max), niceTick(max * 0.67), niceTick(max * 0.33), "0"]);
 
-    ctx.fillStyle = "rgba(213, 220, 231, 0.8)";
+    ctx.fillStyle = chartInk.text;
     ctx.font = "11px Inter, system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText(options.yLabel || "", left, 3);
     ctx.textBaseline = "alphabetic";
-    ctx.fillText(axisMeta.firstLabel || options.xLabel || "Live", left, height - 6);
+    ctx.fillText(axisMeta.firstLabel || t(options.xLabel || "Live"), left, height - 6);
     ctx.textAlign = "right";
-    ctx.fillText(axisMeta.lastLabel || "jetzt", right, height - 6);
+    ctx.fillText(axisMeta.lastLabel || t("jetzt"), right, height - 6);
 
     series.forEach((values, axisIndex) => {
       if (!active[axisIndex]) return;
@@ -2000,6 +2038,7 @@ function createAxisActivityChart(canvas, legendEl, options = {}) {
       axisMeta = nextMeta;
       draw();
     },
+    renderLegend,
     draw,
   };
 }
@@ -2033,15 +2072,15 @@ function createSparkline(canvas, options = {}) {
     const plotHeight = Math.max(1, bottom - top);
     drawGrid(ctx, width, height, { left, right, top, bottom }, [niceTick(max), niceTick(max * 0.67), niceTick(max * 0.33), "0"]);
 
-    ctx.fillStyle = "rgba(213, 220, 231, 0.8)";
+    ctx.fillStyle = chartInk.text;
     ctx.font = "11px Inter, system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText(options.yLabel || "", left, 3);
     ctx.textBaseline = "alphabetic";
-    ctx.fillText(axisMeta.firstLabel || options.xLabel || "Live", left, height - 6);
+    ctx.fillText(axisMeta.firstLabel || t(options.xLabel || "Live"), left, height - 6);
     ctx.textAlign = "right";
-    ctx.fillText(axisMeta.lastLabel || "jetzt", right, height - 6);
+    ctx.fillText(axisMeta.lastLabel || t("jetzt"), right, height - 6);
 
     ctx.beginPath();
     points.forEach((value, index) => {
@@ -2108,7 +2147,7 @@ function createBarChart(canvas, options = {}) {
     const barWidth = Math.max(10, (right - left - gap * (source.length - 1)) / source.length);
     drawGrid(ctx, width, height, { left, right, top, bottom }, config.invert ? [niceTick(maxAbs), niceTick(maxAbs * 0.67), niceTick(maxAbs * 0.33), "0"] : [niceTick(maxAbs), niceTick(maxAbs * 0.33), niceTick(-maxAbs * 0.33), niceTick(-maxAbs)]);
 
-    ctx.fillStyle = "rgba(213, 220, 231, 0.8)";
+    ctx.fillStyle = chartInk.text;
     ctx.font = "11px Inter, system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
@@ -2126,7 +2165,7 @@ function createBarChart(canvas, options = {}) {
       ctx.globalAlpha = 1;
       const label = config.labels?.[index] || options.labels?.[index];
       if (label) {
-        ctx.fillStyle = "rgba(213, 220, 231, 0.72)";
+        ctx.fillStyle = chartInk.text;
         ctx.textAlign = "center";
         ctx.fillText(label, x + barWidth / 2, height - 7);
       }
@@ -2150,7 +2189,7 @@ function createBarChart(canvas, options = {}) {
  * @returns {object} Map API with setPose and draw methods.
  */
 function createWorkspaceMap(canvas) {
-  if (!canvas) return { setPose() {}, draw() {} };
+  if (!canvas) return { setPose() {}, applyInk() {}, draw() {} };
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -2168,11 +2207,28 @@ function createWorkspaceMap(canvas) {
   keyLight.position.set(2, 3, 2);
   scene.add(keyLight);
 
-  const grid = new THREE.GridHelper(2.4, 12, 0x334050, 0x27313d);
-  grid.position.y = 0;
-  scene.add(grid);
+  // The map sits on the panel background, so its grid follows the page theme.
+  const WORKSPACE_INK = {
+    dark: { gridCenter: 0x334050, grid: 0x27313d, ring: 0x3a4350 },
+    light: { gridCenter: 0xa9b4c2, grid: 0xcfd6df, ring: 0xb7c1cd },
+  };
+  let grid = null;
+  const ringMaterial = new THREE.LineBasicMaterial({ color: WORKSPACE_INK.dark.ring, transparent: true, opacity: 0.7 });
 
-  const ringMaterial = new THREE.LineBasicMaterial({ color: 0x3a4350, transparent: true, opacity: 0.7 });
+  function applyInk() {
+    const ink = WORKSPACE_INK[window.uiTheme.theme] || WORKSPACE_INK.dark;
+    if (grid) {
+      scene.remove(grid);
+      grid.geometry.dispose();
+      grid.material.dispose();
+    }
+    // GridHelper bakes its colors into vertex colors, so it is rebuilt.
+    grid = new THREE.GridHelper(2.4, 12, ink.gridCenter, ink.grid);
+    scene.add(grid);
+    ringMaterial.color.setHex(ink.ring);
+  }
+  applyInk();
+
   for (const radius of [0.35, 0.7, 1.05]) {
     const points = [];
     for (let index = 0; index <= 96; index += 1) {
@@ -2316,6 +2372,7 @@ function createWorkspaceMap(canvas) {
       headingLine.geometry = new THREE.BufferGeometry().setFromPoints([current, current.clone().add(heading)]);
       draw();
     },
+    applyInk,
     draw,
   };
 }
@@ -2349,7 +2406,8 @@ function createDigitalTwin(canvas, options = {}) {
     glow: new THREE.MeshStandardMaterial({ color: 0x38c6a3, emissive: 0x0f4f43, roughness: 0.45 }),
   };
 
-  scene.add(new THREE.HemisphereLight(0xe8f3ff, 0x101217, 2.3));
+  const hemiLight = new THREE.HemisphereLight(0xe8f3ff, 0x101217, 2.3);
+  scene.add(hemiLight);
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
   keyLight.position.set(2.5, 4, 3);
   scene.add(keyLight);
@@ -2361,9 +2419,7 @@ function createDigitalTwin(canvas, options = {}) {
   floor.position.y = -0.03;
   root.add(floor);
 
-  const grid = new THREE.GridHelper(2.8, 14, 0x334050, 0x27313d);
-  grid.position.y = 0;
-  root.add(grid);
+  let grid = null;
 
   const proceduralAxes = [];
   const meshAxes = [];
@@ -2593,6 +2649,30 @@ function createDigitalTwin(canvas, options = {}) {
   const cell = new THREE.Group();
   cell.visible = false;
   root.add(cell);
+
+  // Stage colors follow the page theme; the robot materials stay the same.
+  const TWIN_INK = {
+    dark: { floor: 0x1b222c, gridCenter: 0x334050, grid: 0x27313d, hemiGround: 0x101217, rim: 1.3, stand: 0x323b47, top: 0x5b6878 },
+    light: { floor: 0xb9c2cd, gridCenter: 0x93a0b0, grid: 0xb0bac6, hemiGround: 0xb6c0cb, rim: 0.5, stand: 0x76828f, top: 0x9ba6b3 },
+  };
+
+  function applyInk() {
+    const ink = TWIN_INK[window.uiTheme.theme] || TWIN_INK.dark;
+    materials.floor.color.setHex(ink.floor);
+    hemiLight.groundColor.setHex(ink.hemiGround);
+    rimLight.intensity = ink.rim;
+    cellMaterials.stand.color.setHex(ink.stand);
+    cellMaterials.top.color.setHex(ink.top);
+    if (grid) {
+      root.remove(grid);
+      grid.geometry.dispose();
+      grid.material.dispose();
+    }
+    // GridHelper bakes its colors into vertex colors, so it is rebuilt.
+    grid = new THREE.GridHelper(2.8, 14, ink.gridCenter, ink.grid);
+    root.add(grid);
+  }
+  applyInk();
   const part = new THREE.Mesh(new THREE.BoxGeometry(PART_SIZE, PART_SIZE, PART_SIZE), cellMaterials.part);
   part.castShadow = true;
   cell.add(part);
@@ -2727,5 +2807,5 @@ function createDigitalTwin(canvas, options = {}) {
 
   animate();
 
-  return { setJoints, setDemoCell };
+  return { setJoints, setDemoCell, applyInk };
 }

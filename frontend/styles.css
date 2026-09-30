@@ -24,6 +24,59 @@
   --ok-soft: rgba(56, 198, 163, 0.11);
   --warn-soft: rgba(255, 189, 74, 0.12);
   --danger-soft: rgba(255, 93, 115, 0.12);
+  --faint: rgba(247, 247, 248, 0.5);
+  --panel-glass: rgba(23, 26, 33, 0.88);
+  --inverse-bg: #f7f7f8;
+  --inverse-text: #111318;
+  --line-soft: rgba(213, 220, 231, 0.12);
+  --tile: rgba(29, 34, 43, 0.68);
+  --tile-faint: rgba(29, 34, 43, 0.36);
+  --inset: rgba(16, 18, 23, 0.84);
+  --track: #2b3440;
+  --code-text: #d9e3ee;
+  --popover: rgba(18, 23, 30, 0.96);
+  --popover-line: rgba(96, 112, 132, 0.8);
+  --shadow-color: rgba(0, 0, 0, 0.4);
+  --backdrop: rgba(7, 9, 13, 0.68);
+  /* Canvas chart colors, read by app.js on every draw. */
+  --chart-grid: rgba(157, 166, 178, 0.16);
+  --chart-axis: rgba(213, 220, 231, 0.34);
+  --chart-text: rgba(213, 220, 231, 0.8);
+}
+
+/* Light theme: same structure, brighter surfaces and darker accents for contrast. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f4f7;
+  --panel: #ffffff;
+  --panel-2: #f5f7fa;
+  --text: #151a21;
+  --muted: #5b6573;
+  --line: #d5dbe3;
+  --accent: #0d9b75;
+  --accent-2: #1a7fc0;
+  --warn: #c27c00;
+  --danger: #d23650;
+  --ok-soft: rgba(13, 155, 117, 0.1);
+  --warn-soft: rgba(194, 124, 0, 0.12);
+  --danger-soft: rgba(210, 54, 80, 0.1);
+  --faint: rgba(21, 26, 33, 0.5);
+  --panel-glass: rgba(255, 255, 255, 0.92);
+  --inverse-bg: #151a21;
+  --inverse-text: #f7f7f8;
+  --line-soft: rgba(21, 26, 33, 0.1);
+  --tile: #f4f6f9;
+  --tile-faint: rgba(21, 26, 33, 0.03);
+  --inset: #ffffff;
+  --track: #dfe4ea;
+  --code-text: #1f2a36;
+  --popover: rgba(255, 255, 255, 0.98);
+  --popover-line: #c9d1db;
+  --shadow-color: rgba(30, 41, 59, 0.14);
+  --backdrop: rgba(30, 41, 59, 0.35);
+  --chart-grid: rgba(60, 72, 88, 0.14);
+  --chart-axis: rgba(60, 72, 88, 0.4);
+  --chart-text: rgba(40, 50, 62, 0.85);
 }
 
 * {
@@ -44,7 +97,7 @@ body {
 .project-credit {
   width: min(1180px, calc(100vw - 32px));
   margin: -24px auto 18px;
-  color: rgba(247, 247, 248, 0.5);
+  color: var(--faint);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
@@ -97,7 +150,7 @@ body {
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(23, 26, 33, 0.88);
+  background: var(--panel-glass);
 }
 
 .view-tab {
@@ -127,8 +180,8 @@ body {
 }
 
 .view-tab.active {
-  background: #f7f7f8;
-  color: #111318;
+  background: var(--inverse-bg);
+  color: var(--inverse-text);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
@@ -147,6 +200,88 @@ body {
 
 .demo-button.active {
   border-color: rgba(32, 201, 151, 0.7);
+  background: var(--ok-soft);
+  color: var(--accent);
+}
+
+/* Theme toggle shows the sun in dark mode (switch to light) and the moon in light mode. */
+.theme-button {
+  justify-content: center;
+  min-width: 48px;
+  padding: 0 14px;
+}
+
+:root[data-theme="light"] .theme-icon-sun,
+:root:not([data-theme="light"]) .theme-icon-moon {
+  display: none;
+}
+
+/* Language switcher: globe button with a small menu for Deutsch / English. */
+.lang-switch {
+  position: relative;
+}
+
+.lang-button,
+.theme-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.lang-button:focus-visible,
+.theme-button:focus-visible,
+.lang-menu button:focus-visible {
+  outline: 2px solid rgba(92, 200, 255, 0.65);
+  outline-offset: 2px;
+}
+
+.lang-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 14px 32px var(--shadow-color);
+}
+
+.lang-menu[hidden] {
+  display: none;
+}
+
+.lang-menu button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.lang-menu button:hover {
+  color: var(--text);
+}
+
+.lang-menu button[aria-checked="true"] {
   background: var(--ok-soft);
   color: var(--accent);
 }
@@ -370,7 +505,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   margin: 0 0 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(24, 29, 38, 0.84);
+  background: var(--panel-glass);
 }
 
 .chart-toolbar h2 {
@@ -432,9 +567,9 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   min-width: 0;
   min-height: 30px;
   padding: 6px 8px;
-  border: 1px solid rgba(213, 220, 231, 0.12);
+  border: 1px solid var(--line-soft);
   border-radius: 6px;
-  background: rgba(29, 34, 43, 0.66);
+  background: var(--tile);
   color: var(--text);
   cursor: pointer;
   font: inherit;
@@ -453,7 +588,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
 
 .axis-legend-button.inactive {
   color: var(--muted);
-  background: rgba(29, 34, 43, 0.36);
+  background: var(--tile-faint);
 }
 
 .axis-legend-button.inactive .axis-color-dot {
@@ -497,7 +632,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(29, 34, 43, 0.72);
+  background: var(--tile);
 }
 
 .pose-grid span,
@@ -586,7 +721,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(29, 34, 43, 0.72);
+  background: var(--tile);
 }
 
 .quality-summary span {
@@ -664,6 +799,12 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
     linear-gradient(180deg, #161b22 0%, #101217 100%);
 }
 
+:root[data-theme="light"] .twin-stage {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(13, 155, 117, 0.1), transparent 34%),
+    linear-gradient(180deg, #fafbfc 0%, #e7ecf1 100%);
+}
+
 #twinCanvas {
   display: block;
   width: 100%;
@@ -694,7 +835,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(16, 18, 23, 0.82);
+  background: var(--inset);
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
@@ -728,7 +869,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   height: 36px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(16, 18, 23, 0.86);
+  background: var(--inset);
   color: var(--text);
   cursor: pointer;
   font: inherit;
@@ -796,7 +937,7 @@ body:not(:has(#developerDashboard.active)) .telemetry-card {
   height: 10px;
   overflow: hidden;
   border-radius: 999px;
-  background: #2b3440;
+  background: var(--track);
 }
 
 .bar span {
@@ -844,7 +985,7 @@ pre {
   margin: 0;
   padding: 18px;
   overflow: auto;
-  color: #d9e3ee;
+  color: var(--code-text);
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -869,7 +1010,7 @@ pre {
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(16, 18, 23, 0.72);
+  background: var(--inset);
 }
 
 .segmented button,
@@ -894,8 +1035,8 @@ pre {
 }
 
 .segmented button.active {
-  background: #f7f7f8;
-  color: #111318;
+  background: var(--inverse-bg);
+  color: var(--inverse-text);
 }
 
 .axis-wear-list,
@@ -916,7 +1057,7 @@ pre {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(29, 34, 43, 0.62);
+  background: var(--tile);
 }
 
 .axis-wear-item strong,
@@ -943,7 +1084,7 @@ pre {
   height: 10px;
   overflow: hidden;
   border-radius: 999px;
-  background: #2b3440;
+  background: var(--track);
 }
 
 .wear-bar span {
@@ -976,7 +1117,7 @@ pre {
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
   border-radius: 8px;
-  background: rgba(29, 34, 43, 0.62);
+  background: var(--tile);
 }
 
 .timeline-item.warning {
@@ -1028,7 +1169,7 @@ pre {
   min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(16, 18, 23, 0.86);
+  background: var(--inset);
   color: var(--text);
   font: inherit;
   padding: 10px 12px;
@@ -1062,7 +1203,7 @@ pre {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(16, 18, 23, 0.68);
+  background: var(--inset);
 }
 
 .mail-recipient-item strong {
@@ -1084,7 +1225,7 @@ pre {
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgba(7, 9, 13, 0.68);
+  background: var(--backdrop);
 }
 
 .modal-backdrop[hidden] {
@@ -1098,7 +1239,7 @@ pre {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  box-shadow: 0 24px 70px var(--shadow-color);
 }
 
 .modal-head {
@@ -1143,8 +1284,8 @@ pre {
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
   border-radius: 8px;
-  background: rgba(29, 34, 43, 0.96);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.36);
+  background: var(--popover);
+  box-shadow: 0 18px 42px var(--shadow-color);
   pointer-events: auto;
 }
 
@@ -1181,7 +1322,7 @@ pre {
   height: 34px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(16, 18, 23, 0.86);
+  background: var(--inset);
   color: var(--text);
   cursor: pointer;
   font: inherit;
@@ -1204,7 +1345,7 @@ pre {
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(16, 18, 23, 0.86);
+  background: var(--inset);
   color: var(--text);
   font: inherit;
   font-size: 12px;
@@ -1246,10 +1387,10 @@ pre {
   z-index: 20;
   width: min(320px, calc(100vw - 24px));
   padding: 14px;
-  border: 1px solid rgba(96, 112, 132, 0.8);
+  border: 1px solid var(--popover-line);
   border-radius: 8px;
-  background: rgba(18, 23, 30, 0.96);
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.38);
+  background: var(--popover);
+  box-shadow: 0 20px 45px var(--shadow-color);
   color: var(--text);
   pointer-events: none;
 }
@@ -1307,7 +1448,7 @@ pre {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(32, 39, 51, 0.72);
+  background: var(--tile);
 }
 
 .popover-field span {

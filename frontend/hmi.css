@@ -22,6 +22,36 @@
   --danger: #ff4040;
   --warn: #ffbd4a;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --faint: rgba(243, 247, 251, 0.48);
+  --credit-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
+  --well: rgba(10, 14, 18, 0.42);
+  --button: #263442;
+  --button-strong: #314151;
+  --track: rgba(255, 255, 255, 0.1);
+  --backdrop: rgba(4, 8, 12, 0.56);
+}
+
+/* Light theme: brighter surfaces and darker accents for contrast. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef2f6;
+  --surface: #ffffff;
+  --surface-2: #f1f4f8;
+  --line: #cfd8e1;
+  --text: #142030;
+  --muted: #586878;
+  --accent: #0e9c84;
+  --accent-2: #2f7fd6;
+  --danger: #e03131;
+  --warn: #c27c00;
+  --shadow: 0 12px 32px rgba(30, 41, 59, 0.12);
+  --faint: rgba(20, 32, 48, 0.5);
+  --credit-shadow: none;
+  --well: rgba(20, 32, 48, 0.05);
+  --button: #e3e9f0;
+  --button-strong: #d5dde7;
+  --track: rgba(20, 32, 48, 0.1);
+  --backdrop: rgba(30, 41, 59, 0.35);
 }
 
 * {
@@ -49,12 +79,12 @@ body {
 .project-credit {
   width: min(1840px, calc(100vw - 24px));
   margin: -8px auto 10px;
-  color: rgba(243, 247, 251, 0.48);
+  color: var(--faint);
   font-size: 10px;
   font-weight: 800;
   line-height: 1.35;
   text-align: right;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
+  text-shadow: var(--credit-shadow);
 }
 
 body.authenticated {
@@ -69,8 +99,15 @@ body.transparent {
   background: transparent;
 }
 
+/* Transparent panels over a light passthrough keep the light text colors. */
+:root[data-theme="light"] body.transparent {
+  --surface: rgba(255, 255, 255, 0.62);
+  --surface-2: rgba(255, 255, 255, 0.76);
+  --line: rgba(20, 32, 48, 0.16);
+}
+
 body.transparent .project-credit {
-  color: rgba(243, 247, 251, 0.38);
+  color: var(--faint);
 }
 
 body.auth-pending .hmi-shell {
@@ -163,7 +200,7 @@ a {
   padding: 24px;
   display: grid;
   place-items: center;
-  background: rgba(4, 8, 12, 0.56);
+  background: var(--backdrop);
   backdrop-filter: blur(3px);
 }
 
@@ -208,7 +245,7 @@ a {
 }
 
 .confirm-secondary {
-  background: #263442;
+  background: var(--button);
   color: var(--text);
 }
 
@@ -241,6 +278,10 @@ a {
 }
 
 .hmi-topbar {
+  /* backdrop-filter makes every panel its own stacking context; lift the header
+     so its language menu overlays the status strip below. */
+  position: relative;
+  z-index: 10;
   min-height: 60px;
   padding: 8px 12px;
   display: flex;
@@ -321,6 +362,73 @@ h2 {
 
 .tool-button {
   cursor: pointer;
+}
+
+/* Language switcher: globe button with a small menu for Deutsch / English. */
+.lang-switch {
+  position: relative;
+}
+
+.lang-button {
+  gap: 8px;
+}
+
+.login-tools {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+}
+
+/* Theme toggle shows the sun in dark mode (switch to light) and the moon in light mode. */
+.theme-button {
+  min-width: 44px;
+}
+
+:root[data-theme="light"] .theme-icon-sun,
+:root:not([data-theme="light"]) .theme-icon-moon {
+  display: none;
+}
+
+.lang-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+
+.lang-menu[hidden] {
+  display: none;
+}
+
+.lang-menu button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 800;
+  text-align: left;
+}
+
+.lang-menu button:hover {
+  color: var(--text);
+}
+
+.lang-menu button[aria-checked="true"] {
+  background: rgba(23, 195, 165, 0.14);
+  color: var(--accent);
 }
 
 .connection-pill span {
@@ -442,7 +550,7 @@ h2 {
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(10, 14, 18, 0.42);
+  background: var(--well);
 }
 
 .mode-switch button {
@@ -534,7 +642,7 @@ h2 {
   min-height: 58px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #263442;
+  background: var(--button);
   color: var(--text);
   font-size: 1.7rem;
   font-weight: 950;
@@ -701,7 +809,7 @@ h2 {
 
 .mobile-joystick-label {
   position: absolute;
-  color: rgba(243, 247, 251, 0.62);
+  color: var(--muted);
   font-size: 1.4rem;
   font-weight: 950;
   pointer-events: none;
@@ -816,7 +924,7 @@ output {
   min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #263442;
+  background: var(--button);
   color: var(--text);
   font-weight: 900;
   cursor: pointer;
@@ -829,8 +937,8 @@ output {
 
 .home-button {
   min-height: 44px;
-  background: #314151;
-  color: white;
+  background: var(--button-strong);
+  color: var(--text);
 }
 
 /* Readouts and settings panels use tabular numbers so telemetry changes remain easy to scan. */
@@ -905,7 +1013,7 @@ output {
   border-radius: 999px;
   background:
     radial-gradient(circle at center, var(--surface-2) 0 54%, transparent 56%),
-    conic-gradient(from 225deg, var(--warn) 0deg var(--value), rgba(255, 255, 255, 0.1) var(--value) 270deg, transparent 270deg 360deg);
+    conic-gradient(from 225deg, var(--warn) 0deg var(--value), var(--track) var(--value) 270deg, transparent 270deg 360deg);
   display: grid;
   place-items: center;
   font-weight: 950;

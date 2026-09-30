@@ -7,6 +7,8 @@
  * losing the browser, pointer, auth session, or network path should naturally
  * decay into a stop rather than leaving stale intent active.
  */
+// Loaded as a deferred script before this one (see hmi.html).
+const { t } = window.i18n;
 const connectionPill = document.getElementById("connectionPill");
 const readyValue = document.getElementById("readyValue");
 const motionValue = document.getElementById("motionValue");
@@ -116,16 +118,16 @@ function setConnection(online, label) {
 
 function setRobotFresh(isFresh, ageSec = null) {
   if (isFresh) {
-    setConnection(true, DEMO_MODE ? "Demo Daten" : "Roboter online");
-    readyValue.textContent = "bereit";
+    setConnection(true, DEMO_MODE ? t("Demo Daten") : t("Roboter online"));
+    readyValue.textContent = t("bereit");
     return;
   }
 
   setConnection(false, state.socketOnline ? "Offline" : "Dashboard offline");
-  readyValue.textContent = "wartet";
+  readyValue.textContent = t("wartet");
   rateValue.textContent = "0.0 Hz";
   if (Number.isFinite(ageSec)) {
-    lastUpdateValue.textContent = `Letzte Roboterdaten: ${formatNumber(ageSec, 1)} s`;
+    lastUpdateValue.textContent = t("Letzte Roboterdaten: {age} s", { age: formatNumber(ageSec, 1) });
   }
 }
 
@@ -152,7 +154,7 @@ function setJogMode(mode) {
   axisBank.hidden = state.jogMode !== "axis";
   tcpJogBank.hidden = state.jogMode !== "tcp";
   tcpJogSpeedField.hidden = state.jogMode !== "tcp";
-  jogModeTitle.textContent = state.jogMode === "tcp" ? "TCP linear bewegen" : "Achsen bewegen";
+  jogModeTitle.textContent = state.jogMode === "tcp" ? t("TCP linear bewegen") : t("Achsen bewegen");
   jogModeSwitch.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("active", button.dataset.jogMode === state.jogMode);
   });
@@ -259,7 +261,7 @@ function handlePayload(payload) {
 
   if (payload.kind !== "topic") return;
   state.topics.set(payload.topic, payload);
-  lastUpdateValue.textContent = new Date().toLocaleTimeString("de-DE");
+  lastUpdateValue.textContent = new Date().toLocaleTimeString(window.i18n.locale());
 
   if (payload.topic === "/joint_states") {
     const nextPositions = payload.data?.positions || null;
@@ -280,7 +282,7 @@ function handlePayload(payload) {
     state.jointPositions = nextPositions;
     state.lastJointAt = payload.received_at;
     setRobotFresh(true);
-    readyValue.textContent = "bereit";
+    readyValue.textContent = t("bereit");
     updateRate(payload.received_at);
     renderJoints();
     updateSpeedGauges();
@@ -288,7 +290,7 @@ function handlePayload(payload) {
 
   if (payload.topic === "/egm/state") {
     state.egm = payload.data;
-    egmValue.textContent = payload.data?.mci_state_label || payload.data?.motor_state_label || "aktiv";
+    egmValue.textContent = payload.data?.mci_state_label || payload.data?.motor_state_label || t("aktiv");
   }
 }
 
@@ -303,7 +305,7 @@ function handlePayload(payload) {
 function startDemoStream() {
   window.clearInterval(state.demoTimer);
   state.socketOnline = true;
-  commandState.textContent = "Demo-Modus aktiv";
+  commandState.textContent = t("Demo-Modus aktiv");
   const startedAt = performance.now() / 1000;
   let tick = 0;
   state.demoTimer = window.setInterval(() => {
@@ -369,7 +371,7 @@ function connectSocket() {
 
   state.socket.addEventListener("open", () => {
     state.socketOnline = true;
-    commandState.textContent = "Dashboard verbunden";
+    commandState.textContent = t("Dashboard verbunden");
     setRobotFresh(false);
   });
 
@@ -377,7 +379,7 @@ function connectSocket() {
     try {
       handlePayload(JSON.parse(event.data));
     } catch (error) {
-      commandState.textContent = `WS Fehler: ${error.message}`;
+      commandState.textContent = t("WS Fehler: {message}", { message: error.message });
     }
   });
 
@@ -411,7 +413,7 @@ async function postJson(url, payload = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
-    showLogin(data.detail || "Bitte erneut einloggen");
+    showLogin(data.detail || t("Bitte erneut einloggen"));
   }
   if (!response.ok) {
     const error = new Error(data.detail || response.statusText);
@@ -438,7 +440,7 @@ function showHmi(username = "Default User") {
   document.body.classList.add("authenticated");
   loginError.textContent = "";
   loginPassword.value = "";
-  commandState.textContent = `${username} angemeldet`;
+  commandState.textContent = t("{user} angemeldet", { user: username });
   window.requestAnimationFrame(fitHmiToViewport);
 }
 
@@ -507,7 +509,7 @@ async function logout() {
   window.clearTimeout(state.reconnectTimer);
   window.sessionStorage.removeItem(CLIENT_SESSION_KEY);
   await postJson("/api/hmi/auth/logout", {});
-  showLogin("Abgemeldet");
+  showLogin(t("Abgemeldet"));
 }
 
 /**
@@ -537,12 +539,12 @@ async function sendJog(endpoint = "/api/hmi/jog/start") {
     commandState.textContent = `TCP Jog ${data.axis} via ${data.twist_topic}`;
   } else {
     motionValue.textContent = `J${data.axis} ${payload.direction > 0 ? "+" : "-"}`;
-    commandState.textContent = `Jog J${data.axis} bei ${data.speed_percent}%`;
+    commandState.textContent = t("Jog J{axis} bei {speed}%", { axis: data.axis, speed: data.speed_percent });
   }
 }
 
 function handleJogError(error) {
-  commandState.textContent = `Jog Fehler: ${error.message}`;
+  commandState.textContent = t("Jog Fehler: {message}", { message: error.message });
   if (error.status === 401) {
     stopJog("auth-error");
   }
@@ -571,9 +573,9 @@ async function stopJog(reason = "operator") {
   motionValue.textContent = "Idle";
   try {
     await postJson("/api/hmi/jog/stop", { reason });
-    commandState.textContent = "Stop gesendet";
+    commandState.textContent = t("Stop gesendet");
   } catch (error) {
-    commandState.textContent = `Stop Fehler: ${error.message}`;
+    commandState.textContent = t("Stop Fehler: {message}", { message: error.message });
   }
 }
 
@@ -625,7 +627,7 @@ function resetMobileJoystick() {
   }
   mobileJoystick?.classList.remove("active");
   if (mobileJoystickStatus && !state.activeJog) {
-    mobileJoystickStatus.textContent = "Joystick bereit";
+    mobileJoystickStatus.textContent = t("Joystick bereit");
   }
 }
 
@@ -652,14 +654,14 @@ function commandFromJoystick(dx, dy) {
         mode: "tcp",
         axis: "y",
         direction: dx < 0 ? 1 : -1,
-        label: dx < 0 ? "TCP Links" : "TCP Rechts",
+        label: dx < 0 ? t("TCP Links") : t("TCP Rechts"),
       };
     }
     return {
       mode: "tcp",
       axis: "x",
       direction: dy < 0 ? 1 : -1,
-      label: dy < 0 ? "TCP Vor" : "TCP Zurück",
+      label: dy < 0 ? t("TCP Vor") : t("TCP Zurück"),
     };
   }
 
@@ -692,7 +694,7 @@ function updateMobileJoystick(event) {
   if (!command) {
     if (state.joystickCommand) stopJog("joystick-center");
     state.joystickCommand = null;
-    mobileJoystickStatus.textContent = "Mitte";
+    mobileJoystickStatus.textContent = t("Mitte");
     return;
   }
   if (nextKey === state.joystickCommand) return;
@@ -721,7 +723,7 @@ function installControls() {
 
   logoutButton.addEventListener("click", () => {
     logout().catch((error) => {
-      commandState.textContent = `Logout Fehler: ${error.message}`;
+      commandState.textContent = t("Logout Fehler: {message}", { message: error.message });
       showLogin();
     });
   });
@@ -793,9 +795,12 @@ function installControls() {
     try {
       const data = await postJson("/api/hmi/home", { speed_percent: currentSpeed() });
       motionValue.textContent = "Home";
-      commandState.textContent = `Home gesendet: ${data.speed_percent}%, ${data.duration_sec.toFixed(1)} s`;
+      commandState.textContent = t("Home gesendet: {speed}%, {duration} s", {
+        speed: data.speed_percent,
+        duration: data.duration_sec.toFixed(1),
+      });
     } catch (error) {
-      commandState.textContent = `Home Fehler: ${error.message}`;
+      commandState.textContent = t("Home Fehler: {message}", { message: error.message });
     }
   });
 
