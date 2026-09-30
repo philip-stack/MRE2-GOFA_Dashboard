@@ -1502,15 +1502,46 @@ pre {
     margin-left: auto;
   }
 
+  /* Language and theme share the logo row, the view tabs and status follow below. */
   .topbar-actions {
     width: 100%;
-    align-items: stretch;
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "lang theme logo"
+      "views views views"
+      "demo demo demo"
+      "status status status";
+    align-items: center;
   }
 
   .topbar-controls {
-    width: 100%;
-    justify-content: stretch;
+    display: contents;
+  }
+
+  .fhtw-logo {
+    grid-area: logo;
+    justify-self: end;
+  }
+
+  .lang-switch {
+    grid-area: lang;
+  }
+
+  .theme-button {
+    grid-area: theme;
+  }
+
+  .view-switcher {
+    grid-area: views;
+  }
+
+  .demo-button {
+    grid-area: demo;
+  }
+
+  .status {
+    grid-area: status;
   }
 
   .view-switcher {
