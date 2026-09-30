@@ -6,6 +6,33 @@ Web-Dashboard für ROS2-Daten eines ABB GoFa Roboters. Die App läuft in Docker,
 
 ![Digital Twin mit Pick & Place, per Maus gedreht und gezoomt](docs/media/digital-twin.gif)
 
+## Live-Demo
+
+Dashboard und HMI laufen als Demo ohne Roboter im Browser. QR-Code scannen oder Link öffnen:
+
+<table>
+  <tr>
+    <th>Dashboard</th>
+    <th>HMI</th>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://philip-stack.pages.dev/gofa-dashboard/?demo=1">
+        <img src="docs/qr/dashboard_qr-code.jpeg" alt="QR-Code zur Dashboard-Demo" width="200" />
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://philip-stack.pages.dev/gofa-dashboard/hmi?demo=1">
+        <img src="docs/qr/hmi_qr-code.jpeg" alt="QR-Code zur HMI-Demo" width="200" />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://philip-stack.pages.dev/gofa-dashboard/?demo=1">Dashboard-Demo öffnen</a></td>
+    <td align="center"><a href="https://philip-stack.pages.dev/gofa-dashboard/hmi?demo=1">HMI-Demo öffnen</a></td>
+  </tr>
+</table>
+
 ## Funktionen
 
 - Live-Dashboard für ABB GoFa / CRB 15000 mit Joint States, TCP-Pose, EGM-Zustand und 3D Digital Twin
