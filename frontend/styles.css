@@ -1517,6 +1517,12 @@ pre {
     width: 100%;
   }
 
+  /* The switch wraps to the left edge here, so the menu opens to the right. */
+  .lang-menu {
+    left: 0;
+    right: auto;
+  }
+
   .maintenance-toolbar {
     align-items: stretch;
     flex-direction: column;

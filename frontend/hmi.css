@@ -1135,6 +1135,12 @@ output {
     width: 100%;
   }
 
+  /* The switch sits at the left edge here, so the menu opens to the right. */
+  .hmi-topbar .lang-menu {
+    left: 0;
+    right: auto;
+  }
+
   .project-credit {
     width: min(100vw - 20px, 1840px);
     margin: -4px auto 8px;
